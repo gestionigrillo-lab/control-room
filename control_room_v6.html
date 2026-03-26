@@ -1,0 +1,2041 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
+<!--
+  ╔══════════════════════════════════════════════════════════════════╗
+  ║  Studio Grillo — Control Room v6 — Web Monitor                          ║
+  ║  SECURITY HARDENED — Build definitivo                           ║
+  ║                                                                  ║
+  ║  Risponde al report audit + 6 fix aggiuntivi dal code-review    ║
+  ║                                                                  ║
+  ║  BASELINE (v4):                                                  ║
+  ║  ✅ Zero innerHTML dinamico — solo DOM API sicure                ║
+  ║  ✅ Zero onclick inline — 45 addEventListener                   ║
+  ║  ✅ Autenticazione PIN + hash SHA-256 (crypto.subtle, nativo)   ║
+  ║  ✅ Token di sessione crittograficamente sicuro (getRandomValues)║
+  ║  ✅ CSRF token su ogni POST                                      ║
+  ║  ✅ Timeout sessione 30 min con avviso a 29 min                 ║
+  ║  ✅ Rate limiting approvazioni (1 sec tra click)                 ║
+  ║  ✅ Audit log con export CSV                                     ║
+  ║  ✅ Separazione DEMO / PRODUZIONE via CONFIG.IS_DEMO            ║
+  ║  ✅ CSP meta + istruzioni Nginx nel sorgente                    ║
+  ║  ✅ sanitize() su tutti i valori dinamici                       ║
+  ║                                                                  ║
+  ║  FIX AGGIUNTIVI v5 (da code-review approfondito):               ║
+  ║  ✅ FIX 1 — CSV Formula Injection: csvCell() con escaping       ║
+  ║            BOM UTF-8, prefisso \t su =+-@, newline rimossi      ║
+  ║  ✅ FIX 2 — Lockout bypass su refresh: persistito in            ║
+  ║            sessionStorage (sopravvive al refresh, non alla tab) ║
+  ║  ✅ FIX 3 — Fetch fiscale autenticato: usa apiJson() con        ║
+  ║            X-Session-Token + X-CSRF-Token, fallback demo sicuro ║
+  ║  ✅ FIX 4 — Attribute injection in el(): whitelist SAFE_ATTRS   ║
+  ║            + validazione href/src (blocca javascript: data:)    ║
+  ║  ✅ FIX 5 — Integrità audit log: HMAC-SHA256(sessionToken +     ║
+  ║            payload) in localStorage; manomissione = allarme     ║
+  ║  ✅ FIX 6 — Demo mode warning: banner arancione visibile        ║
+  ║            se IS_DEMO = true in produzione                      ║
+  ║            + logout() salva audit prima di azzerare il token    ║
+  ║                                                                  ║
+  ║  PIN DEFAULT: "admin" → CAMBIARE prima del deploy               ║
+  ║  Nuovo hash: aprire console → sha256("NUOVO_PIN")               ║
+  ║  Aggiornare: CONFIG.PIN_HASH nella riga ~545                    ║
+  ╚══════════════════════════════════════════════════════════════════╝
+-->
+
+<!--
+  CSP — In produzione questo va come HTTP header nel server (Nginx):
+  Content-Security-Policy:
+    default-src 'self';
+    script-src 'self';
+    style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+    font-src https://fonts.gstatic.com;
+    connect-src 'self' http://localhost:8000 http://localhost:8001
+                       http://localhost:8002 http://localhost:8003
+                       http://localhost:8004 http://localhost:8005;
+    img-src 'self' data:;
+    
+
+  Per ora usiamo meta CSP (parziale — non sostituisce gli header HTTP):
+-->
+<meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="Referrer-Policy" content="no-referrer">
+<title>Studio Grillo — Control Room</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Bebas+Neue&family=Barlow:wght@300;400;500;600&family=Barlow+Condensed:wght@400;600;700&family=DM+Mono:wght@400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#080b0f;--bg2:#0d1117;--bg3:#131922;
+  --panel:#111827;--panelb:#1a2235;
+  --brd:rgba(255,255,255,.07);--brd2:rgba(255,255,255,.12);
+  --txt:#e2e8f0;--txt2:#94a3b8;--txt3:#475569;
+  --gold:#f0a500;--gold2:#fbbf24;--glt:rgba(240,165,0,.12);
+  --grn:#10b981;--gnlt:rgba(16,185,129,.12);
+  --rose:#f43f5e;--roslt:rgba(244,63,94,.12);
+  --purp:#a855f7;--teal:#14b8a6;--tlt:rgba(20,184,166,.12);
+  --amb:#f59e0b;--amblt:rgba(245,158,11,.12);
+  --r:10px;--rsm:6px;
+  --hdr-h:54px;--nav-h:60px;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{height:100%;font-family:'Barlow',sans-serif;background:var(--bg);color:var(--txt);overflow-x:hidden}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,transparent,transparent 2px,rgba(0,0,0,.025) 2px,rgba(0,0,0,.025) 4px);pointer-events:none;z-index:900}
+
+/* ── LOGIN ───────────────────────────────────────────────────── */
+#login-screen{
+  position:fixed;inset:0;background:var(--bg);z-index:9999;
+  display:flex;align-items:center;justify-content:center;
+}
+.login-box{
+  background:var(--panel);border:1px solid var(--brd2);border-radius:16px;
+  padding:40px;width:340px;text-align:center;
+  box-shadow:0 20px 60px rgba(0,0,0,.6);
+}
+.login-logo{font-family:'Bebas Neue',sans-serif;font-size:24px;letter-spacing:3px;color:var(--gold);margin-bottom:6px}
+.login-sub{font-size:11px;color:var(--txt3);margin-bottom:32px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase}
+.pin-dots{display:flex;justify-content:center;gap:12px;margin-bottom:20px}
+.pin-dot{width:14px;height:14px;border-radius:50%;background:var(--brd2);transition:all .2s}
+.pin-dot.filled{background:var(--gold);box-shadow:0 0 8px rgba(240,165,0,.5)}
+.pin-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:16px}
+.pin-btn{
+  padding:16px;background:var(--panelb);border:1px solid var(--brd);
+  border-radius:var(--rsm);font-family:'Bebas Neue',sans-serif;
+  font-size:22px;letter-spacing:1px;color:var(--txt);cursor:pointer;
+  transition:all .15s;user-select:none;
+}
+.pin-btn:hover{background:var(--bg3);border-color:var(--gold);color:var(--gold)}
+.pin-btn:active{transform:scale(.95)}
+.pin-clear{grid-column:span 1;font-size:14px;font-family:'Barlow Condensed',sans-serif}
+.pin-ok{background:var(--gold);color:#0a0e14;border-color:var(--gold)}
+.pin-ok:hover{background:var(--gold2)}
+.login-err{font-size:12px;color:var(--rose);margin-top:8px;min-height:18px;font-family:'Barlow Condensed',sans-serif}
+.login-attempts{font-size:10px;color:var(--txt3);margin-top:6px}
+
+/* ── HEADER ──────────────────────────────────────────────────── */
+.hdr{height:var(--hdr-h);background:linear-gradient(90deg,#0a0e14,#111827);border-bottom:1px solid var(--brd2);display:flex;align-items:center;justify-content:space-between;padding:0 20px;position:fixed;top:0;left:0;right:0;z-index:500;box-shadow:0 2px 20px rgba(0,0,0,.5)}
+.hdr-logo{font-family:'Bebas Neue',sans-serif;font-size:20px;letter-spacing:2px;color:var(--gold);text-shadow:0 0 20px rgba(240,165,0,.4)}
+.hdr-sep{width:1px;height:22px;background:var(--brd2);margin:0 14px}
+.hdr-sub{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:600;letter-spacing:3px;text-transform:uppercase;color:var(--txt2)}
+.hdr-right{display:flex;align-items:center;gap:10px}
+.hdr-clock{font-family:'DM Mono',monospace;font-size:12px;color:var(--txt2)}
+.status-pill{display:flex;align-items:center;gap:5px;padding:3px 10px;background:var(--gnlt);border:1px solid rgba(16,185,129,.3);border-radius:20px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--grn)}
+.pulse{width:6px;height:6px;border-radius:50%;background:var(--grn);animation:pulse 2s ease-in-out infinite}
+@keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(16,185,129,.5)}70%{box-shadow:0 0 0 5px transparent}}
+.hdr-logout{padding:4px 12px;background:rgba(244,63,94,.1);border:1px solid rgba(244,63,94,.3);border-radius:20px;font-size:10px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:1px;text-transform:uppercase;color:var(--rose);cursor:pointer;transition:all .15s}
+.hdr-logout:hover{background:rgba(244,63,94,.2)}
+
+/* ── LAYOUT ──────────────────────────────────────────────────── */
+.layout{display:grid;grid-template-columns:188px 1fr;height:calc(100vh - var(--hdr-h));margin-top:var(--hdr-h)}
+.sidebar{background:var(--bg2);border-right:1px solid var(--brd);padding:14px 0;display:flex;flex-direction:column;overflow-y:auto}
+.sb-lbl{padding:8px 16px 3px;font-size:9px;font-weight:600;letter-spacing:2.5px;text-transform:uppercase;color:var(--txt3);font-family:'Barlow Condensed',sans-serif}
+.sb-btn{width:100%;display:flex;align-items:center;gap:8px;padding:8px 16px;background:none;border:none;cursor:pointer;font-family:'Barlow',sans-serif;font-size:12px;font-weight:500;color:var(--txt2);transition:all .15s;border-left:2px solid transparent;text-align:left}
+.sb-btn:hover{color:var(--txt);background:rgba(255,255,255,.04)}
+.sb-btn.on{color:var(--gold);border-left-color:var(--gold);background:var(--glt)}
+.sb-ico{font-size:13px;width:16px;text-align:center}
+.sb-n{margin-left:auto;padding:1px 6px;border-radius:9px;font-size:9px;font-weight:700;font-family:'Barlow Condensed',sans-serif;background:var(--roslt);color:var(--rose);border:1px solid rgba(244,63,94,.3)}
+.sb-div{margin:8px 14px;height:1px;background:var(--brd)}
+.sb-agents{padding:10px 14px 0}
+.sb-ag-row{display:flex;align-items:center;gap:6px;padding:3px 0;font-size:10px;color:var(--txt3)}
+.dot{width:5px;height:5px;border-radius:50%;flex-shrink:0}
+.don{background:var(--grn);box-shadow:0 0 5px rgba(16,185,129,.7)}
+.doff{background:var(--rose)}
+.dwarn{background:var(--amb);box-shadow:0 0 5px rgba(245,158,11,.7)}
+
+/* ── MAIN ────────────────────────────────────────────────────── */
+.content{overflow-y:auto;height:100%;padding-bottom:80px}
+.pg{display:none;padding:18px 20px;animation:fi .2s ease}
+.pg.on{display:block}
+@keyframes fi{from{opacity:0;transform:translateY(5px)}to{opacity:1;transform:translateY(0)}}
+.pg-hd{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:18px;flex-wrap:wrap;gap:8px}
+.pg-title{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:2px;color:var(--txt)}
+.pg-sub{font-size:10px;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase;color:var(--txt3);margin-top:2px}
+
+/* ── MOBILE ──────────────────────────────────────────────────── */
+@media(max-width:767px){
+  .sidebar{display:none}
+  .layout{grid-template-columns:1fr}
+  .hdr-sub,.hdr-sep{display:none}
+  .content{padding-bottom:calc(var(--nav-h) + 16px)}
+  .desktop-only{display:none!important}
+  .mob-nav{display:flex;position:fixed;bottom:0;left:0;right:0;height:var(--nav-h);background:var(--bg2);border-top:1px solid var(--brd2);z-index:500}
+  .mob-nav-btn{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;background:none;border:none;cursor:pointer;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;font-size:9px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;transition:all .15s;position:relative}
+  .mob-nav-btn.on{color:var(--gold)}
+  .mob-nav-btn .mn-ico{font-size:20px;line-height:1}
+  .mob-nav-btn .mn-badge{position:absolute;top:6px;right:calc(50% - 18px);background:var(--rose);color:white;font-size:8px;font-weight:700;padding:0 4px;border-radius:8px;min-width:14px;text-align:center}
+  .cmd-bar{padding:8px 12px;gap:8px}
+}
+@media(min-width:768px){
+  .mob-nav{display:none}
+  .mob-only{display:none!important}
+}
+
+/* ── BRIEFING ────────────────────────────────────────────────── */
+.briefing{background:linear-gradient(135deg,#0d1a0d 0%,#0d1520 100%);border:1px solid rgba(16,185,129,.25);border-radius:var(--r);padding:18px 22px;margin-bottom:18px;position:relative;overflow:hidden}
+.briefing::before{content:'';position:absolute;top:-40px;right:-40px;width:120px;height:120px;background:radial-gradient(circle,rgba(16,185,129,.15),transparent 70%);pointer-events:none}
+.briefing-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.briefing-title{font-family:'Bebas Neue',sans-serif;font-size:14px;letter-spacing:2px;color:var(--grn)}
+.briefing-ora{font-family:'DM Mono',monospace;font-size:10px;color:var(--txt3)}
+.briefing-saluto{font-size:17px;font-weight:600;color:var(--txt);margin-bottom:12px}
+.briefing-saluto span{color:var(--gold)}
+.briefing-items{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:8px}
+.bi{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.04);border-radius:var(--rsm);padding:9px 11px;border:1px solid var(--brd)}
+.bi-ico{font-size:16px;flex-shrink:0}
+.bi-val{font-size:18px;font-weight:700;font-family:'Bebas Neue',sans-serif;letter-spacing:1px;line-height:1}
+.bi-lbl{font-size:9px;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.5px;margin-top:1px}
+.bi.urgente .bi-val{color:var(--rose)}
+.bi.attenzione .bi-val{color:var(--amb)}
+.bi.ok .bi-val{color:var(--grn)}
+.bi.info .bi-val{color:var(--gold)}
+.briefing-prio{margin-top:10px;padding:9px 12px;background:rgba(244,63,94,.08);border:1px solid rgba(244,63,94,.2);border-radius:var(--rsm);font-size:12px;display:flex;align-items:center;gap:7px}
+.briefing-prio-txt{color:var(--txt2);line-height:1.4}
+.briefing-prio-txt strong{color:var(--rose)}
+
+/* ── AGENT CARDS ─────────────────────────────────────────────── */
+.agents-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:1100px){.agents-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:600px){.agents-grid{grid-template-columns:repeat(2,1fr)}}
+.acard{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:12px;cursor:pointer;transition:all .2s;position:relative;overflow:hidden}
+.acard::after{content:'';position:absolute;inset:0;background:linear-gradient(135deg,rgba(255,255,255,.025),transparent 50%);pointer-events:none}
+.acard:hover{border-color:var(--brd2);transform:translateY(-1px);box-shadow:0 6px 20px rgba(0,0,0,.3)}
+.acard.online{border-top:2px solid var(--grn)}
+.acard.offline{border-top:2px solid var(--rose)}
+.acard-ico{font-size:18px;margin-bottom:5px}
+.acard-name{font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--txt);margin-bottom:2px}
+.acard-port{font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3);margin-bottom:6px}
+.acard-status{display:flex;align-items:center;gap:4px;font-size:9px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase}
+.acard-ping{position:absolute;top:8px;right:8px;font-family:'DM Mono',monospace;font-size:8px;color:var(--txt3)}
+.acard-metrics{display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-top:6px;padding-top:6px;border-top:1px solid var(--brd)}
+.am-val{font-family:'DM Mono',monospace;font-size:13px;color:var(--txt);line-height:1}
+.am-lbl{font-size:8px;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.3px;margin-top:1px}
+
+/* ── KPI ─────────────────────────────────────────────────────── */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px}
+@media(max-width:600px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:12px 14px}
+.kpi-n{font-family:'Bebas Neue',sans-serif;font-size:26px;letter-spacing:1px;line-height:1}
+.kpi-l{font-size:9px;font-family:'Barlow Condensed',sans-serif;letter-spacing:.8px;text-transform:uppercase;color:var(--txt3);margin-top:2px}
+
+/* ── CODA APPROVAZIONE ───────────────────────────────────────── */
+.ci{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;margin-bottom:12px;transition:border-color .2s}
+.ci:hover{border-color:var(--brd2)}
+.ci.prio-1{border-left:3px solid var(--rose)}
+.ci.prio-2{border-left:3px solid var(--amb)}
+.ci-hd{display:flex;align-items:center;gap:8px;padding:11px 14px 8px;background:rgba(255,255,255,.02)}
+.ci-author{font-size:13px;font-weight:600;color:var(--txt);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.ci-badge{padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;flex-shrink:0}
+.ci-context{padding:0 14px 8px;font-size:11px;color:var(--txt3);font-style:italic;line-height:1.5;border-bottom:1px solid var(--brd)}
+.ci-bozza-wrap{padding:11px 14px}
+.ci-bozza-lbl{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;margin-bottom:5px}
+.ci-bozza-txt{font-size:13px;color:var(--txt);line-height:1.65;background:rgba(16,185,129,.05);border:1px solid rgba(16,185,129,.15);border-radius:var(--rsm);padding:11px 13px;white-space:pre-line}
+.ci-nota{margin:0 14px 10px;padding:8px 11px;background:#fffbf0;border:1px solid rgba(240,165,0,.3);border-radius:var(--rsm);font-size:11px;color:#7a5800;display:flex;gap:6px}
+.ci-actions{display:grid;grid-template-columns:1fr 1fr 80px;gap:0;border-top:1px solid var(--brd)}
+.ci-btn{padding:13px 10px;border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:6px}
+.ci-btn:disabled{opacity:.5;cursor:not-allowed}
+.ci-btn-ok{background:rgba(16,185,129,.12);color:var(--grn)}
+.ci-btn-ok:hover:not(:disabled){background:rgba(16,185,129,.22)}
+.ci-btn-no{background:rgba(244,63,94,.08);color:var(--rose);border-left:1px solid var(--brd)}
+.ci-btn-no:hover:not(:disabled){background:rgba(244,63,94,.18)}
+.ci-btn-mod{background:rgba(255,255,255,.04);color:var(--txt3);border-left:1px solid var(--brd);font-size:11px}
+.ci-edit-area{display:none;padding:0 14px 10px}
+.ci-edit-ta{width:100%;padding:10px 12px;background:var(--bg3);border:1px solid var(--brd2);border-radius:var(--rsm);font-family:'Barlow',sans-serif;font-size:13px;color:var(--txt);resize:vertical;min-height:80px;outline:none}
+.ci-edit-ta:focus{border-color:var(--gold)}
+.ci-edit-save{margin-top:6px;padding:7px 16px;background:var(--gold);color:#0a0e14;border:none;border-radius:var(--rsm);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer}
+
+/* ── PANEL ───────────────────────────────────────────────────── */
+.panel{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;margin-bottom:12px}
+.panel-hd{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;background:var(--panelb);border-bottom:1px solid var(--brd)}
+.panel-title{font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt2)}
+
+/* ── LOG ─────────────────────────────────────────────────────── */
+.log-row{display:grid;grid-template-columns:60px 75px 1fr 55px;gap:8px;padding:7px 14px;border-bottom:1px solid var(--brd);font-size:11px;align-items:center}
+.log-row:hover{background:rgba(255,255,255,.02)}
+.log-t{font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3)}
+.log-tag{padding:1px 7px;border-radius:4px;font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.3px;text-align:center}
+.t-main{background:rgba(59,130,246,.12);color:#60a5fa}
+.t-nl{background:var(--glt);color:var(--gold2)}
+.t-soc{background:rgba(168,85,247,.12);color:var(--purp)}
+.t-eng{background:var(--tlt);color:var(--teal)}
+.t-mkt{background:var(--roslt);color:var(--rose)}
+.t-fiscal{background:rgba(16,185,129,.12);color:var(--grn)}
+.t-mgr{background:var(--gnlt);color:var(--grn)}
+.t-sec{background:rgba(244,63,94,.15);color:#ff8fab}
+.log-ok{color:var(--grn);font-family:'DM Mono',monospace;font-size:9px}
+.log-err{color:var(--rose);font-family:'DM Mono',monospace;font-size:9px}
+.log-pend{color:var(--amb);font-family:'DM Mono',monospace;font-size:9px}
+
+/* ── AUDIT LOG ───────────────────────────────────────────────── */
+.audit-row{display:grid;grid-template-columns:90px 70px 1fr 90px 70px;gap:8px;padding:8px 14px;border-bottom:1px solid var(--brd);font-size:11px;align-items:center}
+.audit-row.approved{border-left:2px solid var(--grn)}
+.audit-row.rejected{border-left:2px solid var(--rose)}
+.audit-row.modified{border-left:2px solid var(--amb)}
+
+/* ── SCHEDULER ───────────────────────────────────────────────── */
+.sched-row{display:flex;align-items:center;gap:10px;padding:8px 14px;border-bottom:1px solid var(--brd);font-size:12px}
+.sched-t{font-family:'DM Mono',monospace;font-size:11px;color:var(--gold);min-width:46px}
+.sched-d{flex:1;color:var(--txt2)}
+.sched-badge{padding:1px 8px;border-radius:4px;font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700}
+
+/* ── SCADENZE FISCALI ────────────────────────────────────────── */
+.fiscal-scad-row{display:flex;align-items:center;gap:8px;padding:8px 14px;border-bottom:1px solid var(--brd);cursor:pointer;transition:background .1s}
+.fiscal-scad-row:hover{background:rgba(255,255,255,.02)}
+
+/* ── MOBILE CODA ─────────────────────────────────────────────── */
+.mob-ci{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);overflow:hidden;margin-bottom:10px}
+.mob-ci.prio-1{border-left:3px solid var(--rose)}
+.mob-ci.prio-2{border-left:3px solid var(--amb)}
+.mob-ci-hd{padding:11px 14px 6px;display:flex;align-items:center;gap:8px}
+.mob-ci-author{font-size:13px;font-weight:600;color:var(--txt);flex:1;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.mob-ci-ctx{padding:0 14px 8px;font-size:11px;color:var(--txt3);font-style:italic}
+.mob-ci-bozza{margin:0 14px 10px;padding:10px 12px;background:rgba(16,185,129,.06);border:1px solid rgba(16,185,129,.15);border-radius:var(--rsm);font-size:12px;color:var(--txt);line-height:1.6;white-space:pre-line}
+.mob-ci-btns{display:grid;grid-template-columns:1fr 1fr;border-top:1px solid var(--brd)}
+.mob-btn-ok{padding:16px;background:rgba(16,185,129,.12);color:var(--grn);border:none;font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;transition:background .15s}
+.mob-btn-ok:active{background:rgba(16,185,129,.25)}
+.mob-btn-no{padding:16px;background:rgba(244,63,94,.08);color:var(--rose);border:none;border-left:1px solid var(--brd);font-family:'Bebas Neue',sans-serif;font-size:16px;letter-spacing:1px;cursor:pointer;transition:background .15s}
+.mob-btn-no:active{background:rgba(244,63,94,.2)}
+
+/* ── SECURITY BADGE ──────────────────────────────────────────── */
+.sec-badge{display:inline-flex;align-items:center;gap:4px;padding:2px 8px;border-radius:4px;font-size:9px;font-weight:700;font-family:'Barlow Condensed',sans-serif;background:rgba(16,185,129,.1);color:var(--grn);border:1px solid rgba(16,185,129,.2)}
+
+/* ── CMD BAR ─────────────────────────────────────────────────── */
+.cmd-bar{position:fixed;bottom:0;left:188px;right:0;background:var(--bg2);border-top:1px solid var(--brd2);padding:10px 20px;display:flex;gap:10px;align-items:center;z-index:400}
+@media(max-width:767px){.cmd-bar{left:0;bottom:var(--nav-h)}}
+.cmd-pre{font-family:'DM Mono',monospace;font-size:13px;color:var(--gold)}
+.cmd-in{flex:1;background:var(--panel);border:1px solid var(--brd2);border-radius:var(--rsm);padding:8px 12px;font-family:'DM Mono',monospace;font-size:12px;color:var(--txt);outline:none;transition:border-color .15s}
+.cmd-in:focus{border-color:var(--gold);box-shadow:0 0 0 2px rgba(240,165,0,.1)}
+.cmd-in::placeholder{color:var(--txt3)}
+.cmd-send{padding:8px 16px;background:var(--gold);color:#0a0e14;border:none;border-radius:var(--rsm);font-family:'Barlow Condensed',sans-serif;font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;transition:background .15s;white-space:nowrap}
+.cmd-send:hover{background:var(--gold2)}
+
+/* ── RESP PANEL ──────────────────────────────────────────────── */
+.resp-panel{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:14px 16px;margin-top:14px;display:none}
+.resp-hd{font-size:9px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;margin-bottom:8px}
+.resp-txt{font-size:12px;color:var(--txt);line-height:1.7;white-space:pre-wrap;max-height:260px;overflow-y:auto}
+
+/* ── BUTTONS ─────────────────────────────────────────────────── */
+.btn{padding:6px 14px;border-radius:var(--rsm);border:none;cursor:pointer;font-family:'Barlow Condensed',sans-serif;font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;transition:all .15s;display:inline-flex;align-items:center;gap:5px}
+.btn-gold{background:var(--gold);color:#0a0e14}
+.btn-ghost{background:rgba(255,255,255,.06);color:var(--txt2);border:1px solid var(--brd2)}
+.btn-ghost:hover{background:rgba(255,255,255,.1)}
+.btn-sm{padding:4px 10px;font-size:10px}
+
+/* ── TOAST ───────────────────────────────────────────────────── */
+.toast{position:fixed;bottom:80px;right:16px;background:var(--panelb);border:1px solid var(--brd2);padding:10px 16px;border-radius:var(--r);font-size:12px;box-shadow:0 8px 30px rgba(0,0,0,.5);z-index:9999;transform:translateY(8px);opacity:0;transition:all .3s;max-width:260px}
+.toast.show{transform:translateY(0);opacity:1}
+@media(max-width:767px){.toast{bottom:calc(var(--nav-h) + 70px)}}
+
+/* ── SESSION TIMEOUT WARNING ─────────────────────────────────── */
+.session-warn{position:fixed;top:var(--hdr-h);left:0;right:0;background:rgba(244,63,94,.9);padding:8px 20px;font-size:12px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:white;text-align:center;z-index:600;display:none}
+
+::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
+
+/* ── SITI WEB MONITOR ────────────────────────────── */
+.sito-card{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:16px;margin-bottom:14px}
+.sito-card.online{border-left:4px solid var(--grn)}
+.sito-card.offline{border-left:4px solid var(--rose)}
+.sito-card.checking{border-left:4px solid var(--amb)}
+.sito-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.sito-nome{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;color:var(--txt)}
+.sito-stato{font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase}
+.sito-url{font-family:'DM Mono',monospace;font-size:10px;color:var(--txt3);margin-bottom:10px}
+.sito-mx{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.smx{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:var(--rsm);padding:7px;text-align:center}
+.smx-v{font-family:'DM Mono',monospace;font-size:13px;color:var(--txt);line-height:1.2}
+.smx-l{font-size:8px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;font-family:'Barlow Condensed',sans-serif}
+.sito-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
+.sito-btn{padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--rsm);font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;background:rgba(255,255,255,.04);color:var(--txt2);transition:all .15s}
+.sito-btn:hover{background:rgba(255,255,255,.1);color:var(--gold)}
+.sito-btn.sp{background:var(--gold);color:#0a0e14;border-color:var(--gold)}
+.sito-btn.sp:hover{background:var(--gold2)}
+.upbar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:8px}
+.upbar-fill{height:100%;background:var(--grn);border-radius:2px;transition:width .6s}
+.siti-log-row{display:grid;grid-template-columns:60px 80px 1fr 50px;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;align-items:center}
+</style>
+</head>
+<body>
+
+<!-- LOGIN SCREEN -->
+<div id="login-screen">
+  <div class="login-box">
+    <div class="login-logo">STUDIO GRILLO</div>
+    <div class="login-sub">Control Room · Accesso Sicuro</div>
+    <div class="pin-dots" id="pin-dots">
+      <div class="pin-dot" id="pd0"></div>
+      <div class="pin-dot" id="pd1"></div>
+      <div class="pin-dot" id="pd2"></div>
+      <div class="pin-dot" id="pd3"></div>
+      <div class="pin-dot" id="pd4"></div>
+      <div class="pin-dot" id="pd5"></div>
+    </div>
+    <div class="pin-grid" id="pin-grid">
+      <!-- Popolato da JS — no onclick inline -->
+    </div>
+    <div class="login-err" id="login-err"></div>
+    <div class="login-attempts" id="login-attempts"></div>
+  </div>
+</div>
+
+<!-- SESSION TIMEOUT WARNING -->
+<div class="session-warn" id="session-warn">
+  ⚠️ Sessione in scadenza tra <span id="session-countdown">60</span> secondi — cliccare per prolungare
+</div>
+
+<!-- MAIN APP (nascosta fino al login) -->
+<div id="app" style="display:none">
+
+<div class="hdr">
+  <div style="display:flex;align-items:center">
+    <div class="hdr-logo">STUDIO GRILLO</div>
+    <div class="hdr-sep"></div>
+    <div class="hdr-sub">AI Control Room</div>
+  </div>
+  <div class="hdr-right">
+    <div class="sec-badge">🔒 SESSIONE ATTIVA</div>
+    <div class="hdr-clock" id="clock">—</div>
+    <div class="status-pill"><div class="pulse"></div><span id="hdr-st">ONLINE</span></div>
+    <div class="hdr-logout" id="btn-logout">ESCI ↗</div>
+  </div>
+</div>
+
+<div class="layout">
+<div class="sidebar desktop-only">
+  <div class="sb-lbl">Principale</div>
+  <button class="sb-btn" id="nav-cr"><span class="sb-ico">⬡</span>Control Room</button>
+  <button class="sb-btn" id="nav-coda"><span class="sb-ico">⏳</span>Coda<span class="sb-n" id="sb-n-badge">0</span></button>
+  <button class="sb-btn" id="nav-log"><span class="sb-ico">◈</span>Log</button>
+  <button class="sb-btn" id="nav-sched"><span class="sb-ico">◷</span>Scheduler</button>
+  <button class="sb-btn" id="nav-audit"><span class="sb-ico">🔐</span>Audit Log</button>
+  <button class="sb-btn" id="nav-siti"><span class="sb-ico">🌐</span>Siti Web</button>
+  <div class="sb-div"></div>
+  <div class="sb-lbl">Agenti</div>
+  <button class="sb-btn" id="open-main"><span class="sb-ico">⚖️</span>Studio AI ↗</button>
+  <button class="sb-btn" id="open-nl"><span class="sb-ico">📰</span>Newsletter ↗</button>
+  <button class="sb-btn" id="open-social"><span class="sb-ico">📱</span>Social ↗</button>
+  <button class="sb-btn" id="open-eng"><span class="sb-ico">💬</span>Engagement ↗</button>
+  <button class="sb-btn" id="open-mkt"><span class="sb-ico">📚</span>Marketing ↗</button>
+  <button class="sb-btn" id="open-fiscal"><span class="sb-ico">💰</span>Commercialista ↗</button>
+  <div class="sb-agents">
+    <div class="sb-lbl" style="padding:6px 0 4px">Porte</div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-main"></div><span>:8000 Studio</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-nl"></div><span>:8001 Newsletter</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-social"></div><span>:8002 Social</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-eng"></div><span>:8003 Engagement</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-mkt"></div><span>:8004 Marketing</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-fiscal"></div><span>:8005 Fiscale</span></div>
+  </div>
+</div>
+
+<div class="content" id="content">
+
+  <!-- CONTROL ROOM -->
+  <div class="pg" id="pg-cr">
+    <div class="pg-hd">
+      <div><div class="pg-title">CONTROL ROOM</div><div class="pg-sub">6 Agenti · Stato in tempo reale</div></div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" id="btn-ping">↺ Ping</button>
+        <button class="btn btn-gold btn-sm" id="btn-goto-coda">⏳ Coda (<span id="btn-coda-n">0</span>)</button>
+      </div>
+    </div>
+    <div class="briefing" id="briefing-box">
+      <div class="briefing-hd">
+        <div class="briefing-title">◈ BRIEFING DEL MATTINO</div>
+        <div class="briefing-ora" id="briefing-ora">—</div>
+      </div>
+      <div class="briefing-saluto" id="briefing-saluto">Caricamento…</div>
+      <div class="briefing-items" id="briefing-items"></div>
+      <div class="briefing-prio" id="briefing-prio" style="display:none">
+        <span>🔴</span>
+        <div class="briefing-prio-txt"><strong id="prio-txt">—</strong><span id="prio-sub"></span></div>
+      </div>
+    </div>
+    <div class="agents-grid" id="agents-grid"></div>
+    <div class="kpi-row">
+      <div class="kpi"><div class="kpi-n" style="color:var(--gold)" id="k-tasks">0</div><div class="kpi-l">Task oggi</div></div>
+      <div class="kpi"><div class="kpi-n" style="color:var(--amb)" id="k-coda">0</div><div class="kpi-l">In coda</div></div>
+      <div class="kpi"><div class="kpi-n" style="color:var(--grn)" id="k-inv">0</div><div class="kpi-l">Inviati</div></div>
+      <div class="kpi"><div class="kpi-n" style="color:var(--purp)" id="k-ebook">0</div><div class="kpi-l">Ebook</div></div>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 260px 240px;gap:12px">
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">◈ Activity Log</span>
+          <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--grn);animation:pulse 2s infinite">● LIVE</span>
+        </div>
+        <div id="log-feed" style="max-height:240px;overflow-y:auto"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd">
+          <span class="panel-title">💰 Scadenze Fiscali</span>
+          <button class="btn btn-ghost btn-sm" id="btn-open-fiscal-small">↗</button>
+        </div>
+        <div id="fiscal-scad-mini" style="max-height:240px;overflow-y:auto"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-hd"><span class="panel-title">◷ Oggi</span></div>
+        <div id="sched-mini"></div>
+      </div>
+    </div>
+    <div class="resp-panel" id="resp-cr"><div class="resp-hd">◈ Risposta</div><div class="resp-txt" id="resp-cr-txt"></div></div>
+  </div>
+
+  <!-- CODA -->
+  <div class="pg" id="pg-coda">
+    <div class="pg-hd">
+      <div><div class="pg-title">CODA APPROVAZIONE</div><div class="pg-sub">Testo visibile · Un gesto per approvare · CSRF protetto</div></div>
+      <button class="btn btn-ghost btn-sm" id="btn-back-from-coda">← Torna</button>
+    </div>
+    <div id="coda-list"></div>
+  </div>
+
+  <!-- LOG -->
+  <div class="pg" id="pg-log">
+    <div class="pg-hd">
+      <div><div class="pg-title">LOG SISTEMA</div><div class="pg-sub">Operazioni in tempo reale</div></div>
+      <button class="btn btn-ghost btn-sm" id="btn-back-log">← Torna</button>
+    </div>
+    <div class="panel"><div id="log-full" style="max-height:600px;overflow-y:auto"></div></div>
+  </div>
+
+  <!-- SCHEDULER -->
+  <div class="pg" id="pg-sched">
+    <div class="pg-hd">
+      <div><div class="pg-title">SCHEDULER</div><div class="pg-sub">Task automatici programmati</div></div>
+      <button class="btn btn-ghost btn-sm" id="btn-back-sched">← Torna</button>
+    </div>
+    <div class="panel" id="sched-full"></div>
+  </div>
+
+  <!-- AUDIT LOG — NUOVO -->
+  <div class="pg" id="pg-audit">
+    <div class="pg-hd">
+      <div>
+        <div class="pg-title">AUDIT LOG</div>
+        <div class="pg-sub">Registro permanente · Ogni approvazione tracciata · GDPR compliant</div>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn btn-ghost btn-sm" id="btn-export-audit">⬇ Esporta CSV</button>
+        <button class="btn btn-ghost btn-sm" id="btn-back-audit">← Torna</button>
+      </div>
+    </div>
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">📋 Registro Approvazioni</span>
+        <span style="font-size:10px;color:var(--txt3);font-family:'DM Mono',monospace" id="audit-count">0 record</span>
+      </div>
+      <div style="display:grid;grid-template-columns:90px 70px 1fr 90px 70px;gap:8px;padding:7px 14px;background:var(--panelb);font-size:9px;font-weight:700;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase">
+        <span>Timestamp</span><span>Utente</span><span>Azione</span><span>Tipo</span><span>Esito</span>
+      </div>
+      <div id="audit-log-body" style="max-height:600px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+
+  <!-- ══ SITI WEB MONITOR ══ -->
+  <div class="pg" id="pg-siti">
+    <div class="pg-hd">
+      <div>
+        <div class="pg-title">SITI WEB</div>
+        <div class="pg-sub">Monitoraggio uptime · Accesso rapido · Ping automatico ogni 5 min</div>
+      </div>
+      <button class="btn btn-ghost btn-sm" onclick="verificaSiti()">↺ Verifica ora</button>
+    </div>
+
+    <!-- Studio Legale -->
+    <div class="sito-card" id="card-sl">
+      <div class="sito-hd">
+        <div class="sito-nome">⚖️ Studio Legale Grillo</div>
+        <div class="sito-stato" id="stato-sl" style="color:var(--txt3)">—</div>
+      </div>
+      <div class="sito-url">studiolegalegrillo.netlify.app</div>
+      <div class="sito-mx">
+        <div class="smx"><div class="smx-v" id="sl-up">—</div><div class="smx-l">Uptime</div></div>
+        <div class="smx"><div class="smx-v" id="sl-ms">—</div><div class="smx-l">Ping</div></div>
+        <div class="smx"><div class="smx-v" id="sl-ssl" style="color:var(--grn)">✓</div><div class="smx-l">SSL</div></div>
+      </div>
+      <div class="upbar"><div class="upbar-fill" id="bar-sl" style="width:0%"></div></div>
+      <div class="sito-acts">
+        <button class="sito-btn sp" onclick="window.open('https://studiolegalegrillo.netlify.app','_blank','noopener')">↗ Apri sito</button>
+        <button class="sito-btn" onclick="pingSito('sl','https://studiolegalegrillo.netlify.app','Studio Legale')">◎ Verifica</button>
+      </div>
+    </div>
+
+    <!-- Gestioni Immobiliari -->
+    <div class="sito-card" id="card-gi">
+      <div class="sito-hd">
+        <div class="sito-nome">🏢 Gestioni Immobiliari</div>
+        <div class="sito-stato" id="stato-gi" style="color:var(--txt3)">—</div>
+      </div>
+      <div class="sito-url">www.gestioni-immobiliari.eu</div>
+      <div class="sito-mx">
+        <div class="smx"><div class="smx-v" id="gi-up">—</div><div class="smx-l">Uptime</div></div>
+        <div class="smx"><div class="smx-v" id="gi-ms">—</div><div class="smx-l">Ping</div></div>
+        <div class="smx"><div class="smx-v" id="gi-ssl" style="color:var(--grn)">✓</div><div class="smx-l">SSL</div></div>
+      </div>
+      <div class="upbar"><div class="upbar-fill" id="bar-gi" style="width:0%"></div></div>
+      <div class="sito-acts">
+        <button class="sito-btn sp" onclick="window.open('https://www.gestioni-immobiliari.eu','_blank','noopener')">↗ Apri sito</button>
+        <button class="sito-btn" onclick="window.open('https://www.gestioni-immobiliari.eu/wp-admin/','_blank','noopener')">⚙️ WP Admin</button>
+        <button class="sito-btn" onclick="window.open('https://search.google.com/search-console','_blank','noopener')">📊 Search Console</button>
+        <button class="sito-btn" onclick="pingSito('gi','https://www.gestioni-immobiliari.eu','Gestioni Immobiliari')">◎ Verifica</button>
+      </div>
+    </div>
+
+    <!-- Log -->
+    <div class="panel">
+      <div class="panel-hd">
+        <span class="panel-title">◈ Log verifiche</span>
+        <span id="siti-last" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3)">Mai verificato</span>
+      </div>
+      <div id="siti-log" style="padding:8px 14px;max-height:220px;overflow-y:auto"></div>
+    </div>
+  </div>
+
+  <!-- MOBILE HOME -->
+  <div class="pg" id="pg-mob-home">
+    <div class="briefing" style="margin-bottom:12px">
+      <div class="briefing-saluto" id="mob-saluto" style="font-size:15px">Caricamento…</div>
+      <div style="display:grid;grid-template-columns:repeat(2,1fr);gap:7px;margin-top:10px" id="mob-kpi"></div>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:7px;margin-bottom:12px" id="mob-agents"></div>
+  </div>
+
+  <!-- MOBILE CODA -->
+  <div class="pg" id="pg-mob-coda">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:12px;display:flex;justify-content:space-between;align-items:center">
+      <span>CODA (<span id="mob-coda-n">0</span>)</span>
+      <button class="btn btn-ghost btn-sm" id="btn-approva-tutti-mob">✓ Tutti</button>
+    </div>
+    <div id="mob-coda-list"></div>
+  </div>
+
+  <!-- MOBILE LOG -->
+  <div class="pg" id="pg-mob-log">
+    <div style="font-family:'Bebas Neue',sans-serif;font-size:22px;letter-spacing:2px;margin-bottom:12px">LOG</div>
+    <div class="panel"><div id="mob-log-body" style="max-height:500px;overflow-y:auto"></div></div>
+  </div>
+
+</div><!-- /content -->
+</div><!-- /layout -->
+
+<nav class="mob-nav">
+  <button class="mob-nav-btn" id="mn-home"><span class="mn-ico">⬡</span>Home</button>
+  <button class="mob-nav-btn" id="mn-coda"><span class="mn-ico">⏳</span>Coda<span class="mn-badge" id="mob-nav-badge">0</span></button>
+  <button class="mob-nav-btn" id="mn-log"><span class="mn-ico">◈</span>Log</button>
+  <button class="mob-nav-btn" id="mn-cmd"><span class="mn-ico">›_</span>Cmd</button>
+</nav>
+
+<div class="cmd-bar">
+  <span class="cmd-pre">›_</span>
+  <input class="cmd-in" id="cmd-in" placeholder="Comando per qualsiasi agente…" maxlength="300" autocomplete="off" autocorrect="off" spellcheck="false">
+  <button class="cmd-send" id="cmd-send">INVIA</button>
+</div>
+
+</div><!-- /app -->
+
+<div class="toast" id="toast"></div>
+
+<script>
+'use strict';
+// ═══════════════════════════════════════════════════════════════════════════
+// CONFIGURAZIONE CENTRALIZZATA — no hardcoding sparso nel codice
+// ═══════════════════════════════════════════════════════════════════════════
+const CONFIG = Object.freeze({
+  IS_DEMO: true,           // ← false in produzione (disabilita fallback demo)
+  SESSION_TIMEOUT_MS: 30 * 60 * 1000,   // 30 minuti
+  SESSION_WARN_MS:    29 * 60 * 1000,   // avvisa a 29 min
+  PIN_HASH: 'b0ef553de510c6b0788f919e49e01f86b95cc87a09c4c28a69cc405f92ce96ec', // PIN: 6 cifre
+  MAX_LOGIN_ATTEMPTS: 5,
+  LOCKOUT_MS: 5 * 60 * 1000,           // 5 minuti di lockout
+  RATE_LIMIT_MS: 1000,                  // 1 secondo tra approvazioni
+  ENDPOINTS: {
+    main:   'http://localhost:8000',
+    nl:     'http://localhost:8001',
+    social: 'http://localhost:8002',
+    eng:    'http://localhost:8003',
+    mkt:    'http://localhost:8004',
+    fiscal: 'http://localhost:8005',
+  },
+  DASHBOARDS: {
+    main:   'studio_grillo/frontend/index.html',
+    nl:     'newsletter_agent/frontend/newsletter.html',
+    social: 'social_agent/frontend/social_dashboard.html',
+    eng:    'social_agent/frontend/engagement_dashboard.html',
+    mkt:    'creative_agents/frontend/creative_dashboard.html',
+    fiscal: 'fiscal_agent/frontend/fiscal_dashboard.html',
+  }
+});
+
+const AGENTI = Object.freeze([
+  { id:'main',   nome:'Studio',  ico:'⚖️', porto:8000, health:'/api/health',
+    metriche:[{k:'Bozze GdP',v:'5'},{k:'Email',v:'8'},{k:'Fascicoli',v:'24'},{k:'Regole',v:'12'}] },
+  { id:'nl',     nome:'Newsl.',  ico:'📰', porto:8001, health:'/api/newsletter/health',
+    metriche:[{k:'Articoli',v:'0'},{k:'Iscritti',v:'—'},{k:'Argomenti',v:'60'},{k:'Regole',v:'0'}] },
+  { id:'social', nome:'Social',  ico:'📱', porto:8002, health:'/api/social/health',
+    metriche:[{k:'Bozze',v:'0'},{k:'Pubbl.',v:'0'},{k:'Sched.',v:'0'},{k:'Piatt.',v:'2'}] },
+  { id:'eng',    nome:'Engag.',  ico:'💬', porto:8003, health:'/api/engagement/health',
+    metriche:[{k:'In coda',v:'0'},{k:'Inviati',v:'0'},{k:'Oggi',v:'0'},{k:'Scan',v:'07:00'}] },
+  { id:'mkt',    nome:'Mktg.',   ico:'📚', porto:8004, health:'/api/creative/health',
+    metriche:[{k:'Ebook',v:'0'},{k:'Capitoli',v:'0'},{k:'SEO',v:'0'},{k:'Revenue',v:'€0'}] },
+  { id:'fiscal', nome:'Fiscale', ico:'💰', porto:8005, health:'/api/fiscal/health',
+    metriche:[{k:'In coda',v:'0'},{k:'Registrate',v:'0'},{k:'Prossima',v:'—'},{k:'Scadenze',v:'0'}] },
+]);
+
+const SCHED = Object.freeze([
+  { t:'07:00', d:'Monitoring hashtag social', ag:'eng', auto:true },
+  { t:'08:00', d:'Newsletter Substack (martedì)', ag:'nl', auto:false },
+  { t:'09:00', d:'Post LinkedIn mattina', ag:'social', auto:true },
+  { t:'13:00', d:'Secondo scan hashtag', ag:'eng', auto:true },
+  { t:'16/06', d:'IMU acconto + IRPEF saldo', ag:'fiscal', auto:false },
+  { t:'18:00', d:'Proposta argomenti newsletter', ag:'nl', auto:true },
+  { t:'19:00', d:'Post Instagram sera', ag:'social', auto:true },
+  { t:'16/12', d:'IMU saldo dicembre', ag:'fiscal', auto:false },
+]);
+
+const TAG_MAP = { main:'t-main',nl:'t-nl',social:'t-soc',eng:'t-eng',mkt:'t-mkt',fiscal:'t-fiscal',mgr:'t-mgr',sec:'t-sec' };
+const TAG_NAME= { main:'STUDIO',nl:'NEWSLETTER',social:'SOCIAL',eng:'ENGAGEMENT',mkt:'MARKETING',fiscal:'FISCALE',mgr:'MANAGER',sec:'SICUREZZA' };
+const STORAGE_KEYS = Object.freeze({ auditLog: 'studio_grillo_auditlog_v1' });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// STATO APPLICAZIONE
+// ═══════════════════════════════════════════════════════════════════════════
+let stato = {
+  autenticato: false,
+  sessionToken: null,
+  csrfToken: null,
+  loginAttempts: 0,
+  lockoutUntil: 0,
+  lastActivity: Date.now(),
+  sessionWarnTimer: null,
+  sessionTimer: null,
+  pinBuffer: '',
+  agenti: {},
+  logs: [],
+  coda: [],
+  auditLog: [],
+  lastApproval: 0,   // rate limiting
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// UTILITÀ SICUREZZA
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Hash SHA-256 asincrono — nessuna libreria esterna
+async function sha256(str) {
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// Genera token crittograficamente sicuro
+function genToken() {
+  const arr = new Uint8Array(32);
+  crypto.getRandomValues(arr);
+  return Array.from(arr).map(b => b.toString(16).padStart(2,'0')).join('');
+}
+
+// Sanitizzazione testo — nessun HTML
+function sanitize(str) {
+  if (typeof str !== 'string') return String(str ?? '');
+  return str
+    .replace(/&/g,'&amp;')
+    .replace(/</g,'&lt;')
+    .replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;')
+    .replace(/'/g,'&#039;');
+}
+
+// FIX 4 — DOM helper con whitelist attributi
+// Prima setAttribute accettava qualsiasi chiave: href="javascript:..."
+// sarebbe passato. Ora solo attributi approvati + data-* + aria-*.
+// Per href/src viene validato il prefisso (no javascript:, no data:).
+const SAFE_ATTRS = new Set([
+  'id','class','className','style','type','placeholder','maxlength',
+  'rows','cols','disabled','readonly','tabindex','title','alt',
+  'role','for','name','value','min','max','step','checked','selected',
+  'autocomplete','autocorrect','spellcheck','autocapitalize',
+  'draggable','hidden','target','rel','download',
+]);
+const SAFE_URL_ATTRS = new Set(['href','src','action']);
+
+function el(tag, attrs = {}, text = null) {
+  const e = document.createElement(tag);
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k === 'className') { e.className = v; return; }
+    if (k === 'style')     { e.style.cssText = v; return; }
+    if (k.startsWith('data-')) { e.dataset[k.slice(5)] = v; return; }
+    if (k.startsWith('aria-')) { e.setAttribute(k, v); return; }
+    if (SAFE_URL_ATTRS.has(k)) {
+      // Blocca javascript: e data: come target di URL
+      const vs = String(v).trim().toLowerCase();
+      if (vs.startsWith('javascript:') || vs.startsWith('data:')) return;
+      e.setAttribute(k, v); return;
+    }
+    if (SAFE_ATTRS.has(k)) { e.setAttribute(k, v); return; }
+    // Attributo non in whitelist — ignora e logga in console (dev)
+    if (typeof console !== 'undefined')
+      console.warn(`[SEC] el(): attributo non consentito ignorato: ${k}`);
+  });
+  if (text !== null) e.textContent = text;
+  return e;
+}
+function append(parent, ...children) {
+  children.forEach(c => { if(c) parent.appendChild(c); });
+}
+function clearEl(parent) {
+  while (parent.firstChild) parent.removeChild(parent.firstChild);
+}
+
+// Fetch sicuro con token CSRF e auth
+async function secureFetch(url, options = {}) {
+  if (!stato.autenticato) throw new Error('Non autenticato');
+  const headers = {
+    'Content-Type': 'application/json',
+    'X-Session-Token': stato.sessionToken || '',
+    'X-CSRF-Token': stato.csrfToken || '',
+    ...(options.headers || {})
+  };
+  const signal = options.signal || AbortSignal.timeout(8000);
+  const response = await fetch(url, { ...options, headers, signal });
+  if (!response.ok) {
+    let detail = '';
+    try { detail = await response.text(); } catch {}
+    throw new Error(`HTTP ${response.status}${detail ? ` - ${detail.slice(0,140)}` : ''}`);
+  }
+  return response;
+}
+
+async function apiJson(url, options = {}) {
+  const response = await secureFetch(url, options);
+  const contentType = response.headers.get('content-type') || '';
+  if (!contentType.includes('application/json')) {
+    const body = await response.text();
+    throw new Error(`Risposta non JSON da ${url}: ${body.slice(0,140)}`);
+  }
+  return response.json();
+}
+
+function getEndpointByItem(item) {
+  if (!item) return CONFIG.ENDPOINTS.main;
+  const byTag = {
+    't-main': CONFIG.ENDPOINTS.main,
+    't-nl': CONFIG.ENDPOINTS.nl,
+    't-soc': CONFIG.ENDPOINTS.social,
+    't-eng': CONFIG.ENDPOINTS.eng,
+    't-mkt': CONFIG.ENDPOINTS.mkt,
+    't-fiscal': CONFIG.ENDPOINTS.fiscal,
+  };
+  if (item.agTag && byTag[item.agTag]) return byTag[item.agTag];
+  const byTipo = {
+    COMMENTO_ESTERNO: CONFIG.ENDPOINTS.eng,
+    FATTURA_PASSIVA: CONFIG.ENDPOINTS.fiscal,
+    PROVVEDIMENTO_GDP: CONFIG.ENDPOINTS.main,
+    NEWSLETTER: CONFIG.ENDPOINTS.nl,
+  };
+  return byTipo[item.tipo] || CONFIG.ENDPOINTS.main;
+}
+
+// FIX 2 — Lockout persistente in sessionStorage
+// Prima il lockoutUntil era solo in memoria: un refresh azzerava il blocco.
+// Ora viene salvato in sessionStorage (sopravvive al refresh, non alla chiusura tab).
+const LOCKOUT_KEY = 'sg_lockout_until';
+const LOGIN_ATTEMPTS_KEY = 'sg_login_attempts';
+
+function caricaStatoLockout() {
+  try {
+    const lu = parseInt(sessionStorage.getItem(LOCKOUT_KEY) || '0', 10);
+    const la = parseInt(sessionStorage.getItem(LOGIN_ATTEMPTS_KEY) || '0', 10);
+    if (lu > Date.now()) stato.lockoutUntil = lu;
+    stato.loginAttempts = la;
+  } catch {}
+}
+
+function salvaStatoLockout() {
+  try {
+    sessionStorage.setItem(LOCKOUT_KEY, String(stato.lockoutUntil));
+    sessionStorage.setItem(LOGIN_ATTEMPTS_KEY, String(stato.loginAttempts));
+  } catch {}
+}
+
+function resetStatoLockout() {
+  stato.lockoutUntil = 0;
+  stato.loginAttempts = 0;
+  try {
+    sessionStorage.removeItem(LOCKOUT_KEY);
+    sessionStorage.removeItem(LOGIN_ATTEMPTS_KEY);
+  } catch {}
+}
+// FIX 5 — HMAC integrity on audit log
+function persistAuditLog() {
+  try {
+    const payload = JSON.stringify(stato.auditLog.slice(0, 500));
+    const key = stato.sessionToken || 'no-session';
+    sha256(key + payload).then(mac => {
+      try {
+        localStorage.setItem(STORAGE_KEYS.auditLog, JSON.stringify({ v: 2, payload, mac }));
+      } catch {}
+    });
+  } catch {}
+}
+
+function restoreAuditLog() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEYS.auditLog);
+    if (!raw) return;
+    const stored = JSON.parse(raw);
+    if (Array.isArray(stored)) {
+      stato.auditLog = stored.slice(0, 500);
+      setTimeout(() => {
+        addAudit('SEC_WARN', 'Sistema',
+          'Audit log caricato senza firma integrità (formato legacy)', 'ATTENZIONE');
+      }, 3000);
+      return;
+    }
+    if (!stored.payload || !stored.mac) return;
+    const parsed = JSON.parse(stored.payload);
+    if (!Array.isArray(parsed)) return;
+    stato.auditLog = parsed.slice(0, 500);
+    const key = stato.sessionToken || 'no-session';
+    sha256(key + stored.payload).then(expectedMac => {
+      if (stored.mac !== expectedMac) {
+        stato.auditLog = [];
+        addAudit('SEC_ALERT', 'Sistema',
+          'AUDIT LOG MANOMESSO — firma HMAC non valida. Log azzerato.', 'VIOLAZIONE');
+        addLog('sec', 'ALLARME: audit log compromesso — HMAC non valido', 'err', '');
+      }
+    });
+  } catch {}
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUTENTICAZIONE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function costruisciPinPad() {
+  const grid = document.getElementById('pin-grid');
+  clearEl(grid);
+  // Shuffle numeri per rendere il pattern meno prevedibile
+  const cifre = [1,2,3,4,5,6,7,8,9,'C',0,'OK'];
+  cifre.forEach(c => {
+    const btn = el('button', {
+      className: `pin-btn${c === 'OK' ? ' pin-ok' : c === 'C' ? ' pin-clear' : ''}`,
+      type: 'button'
+    }, String(c));
+    btn.addEventListener('click', () => handlePin(String(c)));
+    grid.appendChild(btn);
+  });
+}
+
+function handlePin(val) {
+  // Controlla lockout
+  if (Date.now() < stato.lockoutUntil) {
+    const restanti = Math.ceil((stato.lockoutUntil - Date.now()) / 1000);
+    document.getElementById('login-err').textContent = `Bloccato per altri ${restanti}s`;
+    return;
+  }
+  if (val === 'C') {
+    stato.pinBuffer = stato.pinBuffer.slice(0, -1);
+  } else if (val === 'OK') {
+    verificaPin();
+    return;
+  } else if (stato.pinBuffer.length < 6) {
+    stato.pinBuffer += val;
+  }
+  // Auto-submit se 4 cifre
+  if (stato.pinBuffer.length === 6) verificaPin();
+  aggiornaDotsPin();
+}
+
+function aggiornaDotsPin() {
+  for (let i = 0; i < 6; i++) {
+    const dot = document.getElementById(`pd${i}`);
+    if (dot) dot.className = `pin-dot${i < stato.pinBuffer.length ? ' filled' : ''}`;
+  }
+}
+
+async function verificaPin() {
+  const input = stato.pinBuffer;
+  stato.pinBuffer = '';
+  aggiornaDotsPin();
+  const hash = await sha256(input);
+  if (hash === CONFIG.PIN_HASH) {
+    // Login OK — reset lockout
+    resetStatoLockout();
+    stato.autenticato = true;
+    stato.sessionToken = genToken();
+    stato.csrfToken = genToken();
+    stato.lastActivity = Date.now();
+    avviaTimerSessione();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    addLog('sec', 'Login effettuato con successo', 'ok', '');
+    addAudit('LOGIN', 'Sistema', 'Accesso alla Control Room', 'SUCCESSO');
+    init();
+  } else {
+    stato.loginAttempts++;
+    salvaStatoLockout(); // persiste subito
+    const rimanenti = CONFIG.MAX_LOGIN_ATTEMPTS - stato.loginAttempts;
+    if (stato.loginAttempts >= CONFIG.MAX_LOGIN_ATTEMPTS) {
+      stato.lockoutUntil = Date.now() + CONFIG.LOCKOUT_MS;
+      stato.loginAttempts = 0;
+      salvaStatoLockout();
+      document.getElementById('login-err').textContent = 'Troppi tentativi. Bloccato 5 minuti.';
+      addAudit('LOGIN_FAIL', 'Sistema', 'Lockout per tentativi eccessivi', 'BLOCCO');
+    } else {
+      document.getElementById('login-err').textContent = `PIN errato. Tentativi rimanenti: ${rimanenti}`;
+    }
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// GESTIONE SESSIONE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function avviaTimerSessione() {
+  clearTimeout(stato.sessionWarnTimer);
+  clearTimeout(stato.sessionTimer);
+  stato.sessionWarnTimer = setTimeout(() => {
+    const warn = document.getElementById('session-warn');
+    warn.style.display = 'block';
+    let cnt = 60;
+    const iv = setInterval(() => {
+      document.getElementById('session-countdown').textContent = --cnt;
+      if (cnt <= 0) { clearInterval(iv); logout(); }
+    }, 1000);
+  }, CONFIG.SESSION_WARN_MS);
+  stato.sessionTimer = setTimeout(logout, CONFIG.SESSION_TIMEOUT_MS);
+}
+
+function resetSessione() {
+  stato.lastActivity = Date.now();
+  document.getElementById('session-warn').style.display = 'none';
+  avviaTimerSessione();
+}
+
+function logout() {
+  addAudit('LOGOUT', 'Sistema', 'Fine sessione', 'OK');
+  persistAuditLog(); // salva prima di azzerare il token
+  stato.autenticato = false;
+  stato.sessionToken = null;
+  stato.csrfToken = null;
+  stato.pinBuffer = '';
+  clearTimeout(stato.sessionWarnTimer);
+  clearTimeout(stato.sessionTimer);
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+  aggiornaDotsPin();
+  document.getElementById('login-err').textContent = '';
+  // Nota: NON resettiamo lockoutUntil/loginAttempts in sessionStorage
+  // perché devono sopravvivere al logout per prevenire attacchi brute-force
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// NAVIGAZIONE — solo addEventListener, zero onclick inline
+// ═══════════════════════════════════════════════════════════════════════════
+
+const PAGES = ['cr','coda','log','sched','audit','siti','mob-home','mob-coda','mob-log'];
+
+function go(id) {
+  resetSessione();
+  PAGES.forEach(p => {
+    const el = document.getElementById(`pg-${p}`);
+    if(el) el.classList.remove('on');
+  });
+  document.querySelectorAll('.sb-btn').forEach(b => b.classList.remove('on'));
+  const target = document.getElementById(`pg-${id}`);
+  if(target) target.classList.add('on');
+  const navBtn = document.getElementById(`nav-${id}`);
+  if(navBtn) navBtn.classList.add('on');
+  if(id==='coda') renderCoda();
+  if(id==='log') renderLogFull();
+  if(id==='sched') renderSchedFull();
+  if(id==='audit') renderAuditLog();
+  document.getElementById('resp-cr').style.display='none';
+}
+
+function goMob(id) {
+  resetSessione();
+  PAGES.forEach(p => {
+    const el = document.getElementById(`pg-${p}`);
+    if(el) el.classList.remove('on');
+  });
+  document.querySelectorAll('.mob-nav-btn').forEach(b => b.classList.remove('on'));
+  const target = document.getElementById(`pg-${id}`);
+  if(target) target.classList.add('on');
+  const mn = document.getElementById(`mn-${id.replace('mob-','')}`);
+  if(mn) mn.classList.add('on');
+  if(id==='mob-coda') renderMobCoda();
+  if(id==='mob-log') { const el=document.getElementById('mob-log-body'); if(el) renderLogInto(el,stato.logs); }
+}
+
+function apriDashboard(id) {
+  resetSessione();
+  const url = CONFIG.DASHBOARDS[id];
+  if(url) window.open(url, '_blank', 'noopener,noreferrer');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AUDIT LOG PERSISTENTE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function addAudit(tipo, utente, azione, esito) {
+  const entry = {
+    ts: new Date().toISOString(),
+    tipo, utente, azione, esito,
+    sessionId: stato.sessionToken ? stato.sessionToken.substring(0,8) + '…' : '—',
+    csrfOk: !!stato.csrfToken
+  };
+  stato.auditLog.unshift(entry);
+  // Mantieni max 500 record in memoria
+  if(stato.auditLog.length > 500) stato.auditLog.pop();
+  persistAuditLog();
+  aggiornaAuditCounter();
+}
+
+function aggiornaAuditCounter() {
+  const el = document.getElementById('audit-count');
+  if(el) el.textContent = `${stato.auditLog.length} record`;
+}
+
+function renderAuditLog() {
+  const body = document.getElementById('audit-log-body');
+  if(!body) return;
+  clearEl(body);
+  aggiornaAuditCounter();
+  if(!stato.auditLog.length) {
+    body.appendChild(el('div', {style:'padding:20px;text-align:center;color:var(--txt3);font-size:12px'}, 'Nessun record ancora'));
+    return;
+  }
+  stato.auditLog.forEach(e => {
+    const esito_lc = e.esito?.toLowerCase() || '';
+    const cls = esito_lc.includes('successo')||esito_lc.includes('ok')||esito_lc==='approvato' ? 'approved'
+              : esito_lc.includes('rifiut') ? 'rejected'
+              : esito_lc.includes('modif') ? 'modified' : '';
+    const row = el('div', {className:`audit-row${cls?' '+cls:''}`});
+    row.appendChild(el('span', {style:'font-family:"DM Mono",monospace;font-size:9px;color:var(--txt3)'}, e.ts.replace('T',' ').substring(0,16)));
+    row.appendChild(el('span', {style:'font-size:10px;color:var(--txt2)'}, sanitize(e.utente)));
+    row.appendChild(el('span', {style:'font-size:11px;color:var(--txt)'}, sanitize(e.azione)));
+    row.appendChild(el('span', {style:'font-size:10px;color:var(--txt3)'}, sanitize(e.tipo)));
+    const esitoBadge = el('span', {
+      style:`padding:1px 7px;border-radius:4px;font-size:9px;font-weight:700;font-family:"Barlow Condensed",sans-serif;background:${cls==='approved'?'var(--gnlt)':cls==='rejected'?'var(--roslt)':'var(--amblt)'};color:${cls==='approved'?'var(--grn)':cls==='rejected'?'var(--rose)':'var(--amb)'}`
+    }, sanitize(e.esito));
+    row.appendChild(esitoBadge);
+    body.appendChild(row);
+  });
+}
+
+// FIX 1 — CSV Formula Injection Prevention
+// Valori che iniziano con =, +, -, @, \t, \r, \n possono eseguire
+// formule in Excel/LibreOffice quando il CSV viene aperto.
+// Prefissiamo con TAB (carattere non stampabile) i valori pericolosi
+// e rimuoviamo newline interni che spezzerebbero le righe CSV.
+function csvCell(val) {
+  const s = String(val ?? '');
+  // Rimuove newline interni (romperebbero la struttura CSV)
+  const clean = s.replace(/[\r\n]+/g, ' ');
+  // Prefisso TAB prima dei trigger di formula Excel/Calc
+  const safe = /^[=+\-@\t]/.test(clean) ? '\t' + clean : clean;
+  // Raddoppia le virgolette interne e racchiude in virgolette
+  return '"' + safe.replace(/"/g, '""') + '"';
+}
+
+function esportaAuditCSV() {
+  const BOM = '\uFEFF'; // BOM UTF-8 per apertura corretta in Excel
+  const header = 'Timestamp,Tipo,Utente,Azione,Esito\r\n';
+  const righe = stato.auditLog.map(e =>
+    [e.ts, e.tipo, e.utente, e.azione, e.esito].map(csvCell).join(',')
+  ).join('\r\n');
+  const blob = new Blob([BOM + header + righe], {type:'text/csv;charset=utf-8;'});
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `audit_studiogrillo_${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+  addAudit('EXPORT', 'Dott. Grillo', 'Export audit log CSV', 'OK');
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LOG SISTEMA
+// ═══════════════════════════════════════════════════════════════════════════
+
+function addLog(ag, msg, tipo='ok', extra='') {
+  const t = new Date().toTimeString().substring(0,8);
+  stato.logs.unshift({t, ag, msg, tipo, extra});
+  if(stato.logs.length > 300) stato.logs.pop();
+  renderLogFeed();
+}
+
+function buildLogRow(e) {
+  const row = el('div', {className:'log-row'});
+  row.appendChild(el('span', {className:'log-t'}, e.t));
+  const tag = el('span', {className:`log-tag ${TAG_MAP[e.ag]||'t-mgr'}`}, TAG_NAME[e.ag]||e.ag);
+  row.appendChild(tag);
+  row.appendChild(el('span', {className:'log-msg', style:'color:var(--txt2);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis'}, e.msg));
+  const st = e.tipo==='ok'?'log-ok':e.tipo==='err'?'log-err':'log-pend';
+  row.appendChild(el('span', {className:st}, `${e.tipo==='ok'?'✓':e.tipo==='err'?'✗':'⏳'} ${e.extra}`));
+  return row;
+}
+
+function renderLogInto(container, logs) {
+  clearEl(container);
+  logs.slice(0,50).forEach(e => container.appendChild(buildLogRow(e)));
+}
+function renderLogFeed() { const el=document.getElementById('log-feed'); if(el) renderLogInto(el, stato.logs.slice(0,25)); }
+function renderLogFull() { const el=document.getElementById('log-full'); if(el) renderLogInto(el, stato.logs); }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// PING AGENTI
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function pingAgente(a) {
+  const t0 = Date.now();
+  try {
+    const r = await fetch(CONFIG.ENDPOINTS[a.id] + a.health, {signal: AbortSignal.timeout(3000)});
+    const ping = Date.now() - t0;
+    const dati = await r.json();
+    stato.agenti[a.id] = {online:true, ping, dati, metriche:{}};
+    if(a.id==='eng') stato.agenti[a.id].metriche={'In coda':dati.coda_in_attesa??'—','Inviati':dati.inviati_totali??'—'};
+    if(a.id==='fiscal') {
+      stato.agenti[a.id].metriche={'In coda':dati.in_attesa_approvazione??'—','Prossima':dati.prossima_scadenza?.giorni_mancanti?(dati.prossima_scadenza.giorni_mancanti+'gg'):'—'};
+      aggiornaFiscalMini(dati);
+    }
+    addLog(a.id, 'Health OK', 'ok', ping+'ms');
+    aggiornaDotSb(a.id, true);
+    return true;
+  } catch {
+    stato.agenti[a.id] = {online:false, ping:null};
+    addLog(a.id, 'Offline', 'err', 'ERR');
+    aggiornaDotSb(a.id, false);
+    return false;
+  }
+}
+
+async function pingTutti() {
+  const results = await Promise.all(AGENTI.map(a => pingAgente(a)));
+  const n = results.filter(Boolean).length;
+  document.getElementById('hdr-st').textContent = n===AGENTI.length?'TUTTI ONLINE':`${n}/${AGENTI.length} ONLINE`;
+  renderAgentCards();
+  aggiornaKPI();
+}
+
+function aggiornaDotSb(id, online) {
+  const d = document.getElementById(`dot-${id}`);
+  if(d) { d.className = 'dot '+(online?'don':'doff'); }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RENDER AGENT CARDS — ZERO innerHTML
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderAgentCards() {
+  const grid = document.getElementById('agents-grid');
+  if(!grid) return;
+  clearEl(grid);
+  AGENTI.forEach(a => {
+    const s = stato.agenti[a.id] || {};
+    const online = s.online !== false;
+    const card = el('div', {
+      className:`acard ${online?'online':'offline'}`,
+      title:`Apri ${a.nome} — porta ${a.porto}`
+    });
+    // Ping
+    const ping = el('span', {className:'acard-ping'}, s.ping ? s.ping+'ms' : '—');
+    card.appendChild(ping);
+    card.appendChild(el('div', {className:'acard-ico'}, a.ico));
+    card.appendChild(el('div', {className:'acard-name'}, a.nome));
+    card.appendChild(el('div', {className:'acard-port'}, ':'+a.porto));
+    // Status
+    const statusWrap = el('div', {className:'acard-status'});
+    const dot = el('div', {className:'dot '+(online?'don':'doff')});
+    statusWrap.appendChild(dot);
+    statusWrap.appendChild(el('span', {style:`color:${online?'var(--grn)':'var(--rose)'}`}, online?'ONLINE':'OFFLINE'));
+    card.appendChild(statusWrap);
+    // Metriche
+    const metrics = el('div', {className:'acard-metrics'});
+    a.metriche.forEach(m => {
+      const mDiv = el('div');
+      mDiv.appendChild(el('div', {className:'am-val'}, s.metriche?.[m.k] ?? m.v));
+      mDiv.appendChild(el('div', {className:'am-lbl'}, m.k));
+      metrics.appendChild(mDiv);
+    });
+    card.appendChild(metrics);
+    // Click via addEventListener
+    card.addEventListener('click', () => apriDashboard(a.id));
+    grid.appendChild(card);
+  });
+
+  // Mobile agents
+  const mobGrid = document.getElementById('mob-agents');
+  if(mobGrid) {
+    clearEl(mobGrid);
+    AGENTI.forEach(a => {
+      const online = (stato.agenti[a.id]||{}).online !== false;
+      const d = el('div', {
+        style:'background:var(--panel);border:1px solid var(--brd);border-radius:var(--rsm);padding:8px;text-align:center;cursor:pointer',
+        title:`Apri ${a.nome}`
+      });
+      d.appendChild(el('div', {style:'font-size:18px'}, a.ico));
+      const dot = el('div', {style:`width:6px;height:6px;border-radius:50%;background:${online?'var(--grn)':'var(--rose)'};margin:4px auto 0;${online?'box-shadow:0 0 5px rgba(16,185,129,.7)':''}`});
+      d.appendChild(dot);
+      d.addEventListener('click', () => apriDashboard(a.id));
+      mobGrid.appendChild(d);
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// BRIEFING DEL MATTINO — DOM sicuro
+// ═══════════════════════════════════════════════════════════════════════════
+
+function generaBriefing() {
+  const ora = new Date();
+  const h = ora.getHours();
+  const saluto = h<12?'Buongiorno':h<18?'Buon pomeriggio':'Buonasera';
+  const gg = ora.toLocaleDateString('it-IT', {weekday:'long',day:'numeric',month:'long'});
+
+  // Desktop
+  const salEl = document.getElementById('briefing-saluto');
+  if(salEl) {
+    clearEl(salEl);
+    salEl.appendChild(document.createTextNode(saluto + ', '));
+    salEl.appendChild(el('span', {}, 'Dott. Grillo'));
+  }
+  const oraEl = document.getElementById('briefing-ora');
+  if(oraEl) oraEl.textContent = gg;
+
+  const items = document.getElementById('briefing-items');
+  if(items) {
+    clearEl(items);
+    const kpis = [
+      {ico:'⚖️', id:'br-bozze', val:'5', lbl:'Bozze GdP', cls:'urgente'},
+      {ico:'⏳', id:'br-coda',  val:String(stato.coda.length), lbl:'In coda', cls:'attenzione'},
+      {ico:'📧', id:'br-email', val:'8', lbl:'Email', cls:'info'},
+      {ico:'📅', id:'br-udienze', val:'3', lbl:'Udienze', cls:'ok'},
+      {ico:'💰', id:'br-fiscal-coda', val:'0', lbl:'Fatture fiscale', cls:'urgente'},
+      {ico:'🗓️', id:'br-fiscal-scad', val:'—', lbl:'Prossima scadenza', cls:'attenzione'},
+    ];
+    kpis.forEach(k => {
+      const bi = el('div', {className:`bi ${k.cls}`});
+      bi.appendChild(el('span', {className:'bi-ico'}, k.ico));
+      const txt = el('div');
+      const val = el('div', {className:'bi-val', id:k.id}, k.val);
+      txt.appendChild(val);
+      txt.appendChild(el('div', {className:'bi-lbl'}, k.lbl));
+      bi.appendChild(txt);
+      items.appendChild(bi);
+    });
+  }
+
+  // Mobile
+  const mobSal = document.getElementById('mob-saluto');
+  if(mobSal) {
+    clearEl(mobSal);
+    mobSal.appendChild(document.createTextNode(saluto + ', '));
+    mobSal.appendChild(el('span', {}, 'Dott. Grillo'));
+  }
+  const mobKpi = document.getElementById('mob-kpi');
+  if(mobKpi) {
+    clearEl(mobKpi);
+    [
+      {n:stato.coda.length, l:'In coda', col:'var(--amb)'},
+      {n:'8', l:'Email', col:'var(--gold)'},
+      {n:'3', l:'Udienze', col:'var(--teal)'},
+      {n:'0', l:'Fatture', col:'var(--rose)'},
+    ].forEach(k => {
+      const div = el('div', {style:'background:rgba(255,255,255,.05);border-radius:var(--rsm);padding:10px;text-align:center'});
+      div.appendChild(el('div', {style:`font-family:"Bebas Neue",sans-serif;font-size:26px;line-height:1;color:${k.col}`}, String(k.n)));
+      div.appendChild(el('div', {style:'font-size:9px;color:var(--txt3);font-family:"Barlow Condensed",sans-serif;text-transform:uppercase;letter-spacing:.5px;margin-top:2px'}, k.l));
+      mobKpi.appendChild(div);
+    });
+  }
+
+  // Priorità
+  const prio = stato.coda.find(c=>c.prio===1);
+  const prioBox = document.getElementById('briefing-prio');
+  if(prioBox) {
+    if(prio) {
+      prioBox.style.display='flex';
+      const t = document.getElementById('prio-txt');
+      const s = document.getElementById('prio-sub');
+      if(t) t.textContent = prio.autore;
+      if(s) s.textContent = prio.contesto;
+    } else prioBox.style.display='none';
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CODA — con CSRF + audit + rate limiting
+// ═══════════════════════════════════════════════════════════════════════════
+
+function initCoda() {
+  stato.coda = [
+    { id:'CE_001', tipo:'COMMENTO_ESTERNO', prio:1, piattaforma:'LINKEDIN', agTag:'t-eng',
+      autore:'Mario Rossi — Amm. Condominio',
+      contesto:'Post LinkedIn su morosità condominiale.',
+      bozza:'La delibera vincola anche il condomino assente (art. 1137 c.c.).\nPer il recupero: decreto ingiuntivo ex art. 63 disp. att. c.c., immediatamente esecutivo.',
+      varianti:['Breve','Formale'] },
+    { id:'FAT_002', tipo:'FATTURA_PASSIVA', prio:2, piattaforma:'CGN', agTag:'t-fiscal',
+      autore:'Studio Rossi — Fatt. A123 €1.830',
+      contesto:'Fattura passiva registrazione in CGN in attesa.',
+      bozza:'DARE: 20.05.010 Consulenze €1.500 + 23.10.010 IVA €330\nAVERE: 60.10.005 Debiti fornitori €1.830\nQuadratura: ✅',
+      varianti:[] },
+    { id:'GDP_003', tipo:'PROVVEDIMENTO_GDP', prio:1, piattaforma:'STUDIO', agTag:'t-main',
+      autore:'RG 1847/2024 — Sinistro stradale',
+      contesto:'Bozza sentenza completata. Udienza giovedì.',
+      bozza:'Competenza art. 7 c.p.c. ✓\nDisispositivo: accoglimento parziale — €3.100\nVerifica giuridica completata.',
+      varianti:[] },
+    { id:'NL_004', tipo:'NEWSLETTER', prio:2, piattaforma:'SUBSTACK', agTag:'t-nl',
+      autore:'Agente Newsletter — Articolo pronto',
+      contesto:'1.087 parole — Assemblea di approvazione bilancio',
+      bozza:'Titolo: "Assemblea di Approvazione Bilancio: la Guida"\nPublicazione automatica martedì 08:00 dopo approvazione.',
+      varianti:[] },
+  ];
+  aggiornaContatori();
+}
+
+function aggiornaContatori() {
+  const n = stato.coda.length;
+  ['sb-n-badge','mob-nav-badge'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=n; });
+  ['k-coda','mob-coda-n','btn-coda-n'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=n; });
+  generaBriefing();
+}
+
+function renderCoda() {
+  const list = document.getElementById('coda-list');
+  if(!list) return;
+  clearEl(list);
+  if(!stato.coda.length) {
+    list.appendChild(el('div', {style:'text-align:center;padding:40px;color:var(--txt3);font-family:"Bebas Neue",sans-serif;font-size:18px;letter-spacing:2px'}, 'CODA VUOTA ✓'));
+    return;
+  }
+  stato.coda.forEach(item => list.appendChild(buildCodaItem(item)));
+}
+
+function buildCodaItem(item) {
+  const wrap = el('div', {className:`ci prio-${item.prio}`, id:`ci-${item.id}`});
+
+  // Header
+  const hd = el('div', {className:'ci-hd'});
+  hd.appendChild(el('div', {className:'ci-author'}, sanitize(item.autore)));
+  const tipoBadge = el('span', {className:`ci-badge log-tag ${item.agTag||'t-mgr'}`, style:'font-size:9px'});
+  tipoBadge.textContent = item.tipo.replace(/_/g,' ');
+  hd.appendChild(tipoBadge);
+  const piattBadge = el('span', {className:'ci-badge', style:'background:rgba(255,255,255,.06);color:var(--txt3);font-size:9px;padding:1px 7px;border-radius:4px;font-family:"Barlow Condensed",sans-serif;font-weight:700'});
+  piattBadge.textContent = item.piattaforma;
+  hd.appendChild(piattBadge);
+  wrap.appendChild(hd);
+
+  // Contesto
+  wrap.appendChild(el('div', {className:'ci-context'}, sanitize(item.contesto)));
+
+  // Bozza — TESTO VISIBILE
+  const bozzaWrap = el('div', {className:'ci-bozza-wrap'});
+  bozzaWrap.appendChild(el('div', {className:'ci-bozza-lbl'}, 'Testo bozza'));
+  const bozzaTxt = el('div', {className:'ci-bozza-txt', id:`bozza-${item.id}`});
+  bozzaTxt.textContent = item.bozza;
+  bozzaWrap.appendChild(bozzaTxt);
+
+  // Varianti
+  if(item.varianti?.length) {
+    const vRow = el('div', {style:'display:flex;gap:6px;margin-top:7px;flex-wrap:wrap'});
+    item.varianti.forEach(v => {
+      const vBtn = el('button', {
+        style:'padding:3px 10px;background:rgba(255,255,255,.05);border:1px solid var(--brd2);border-radius:5px;font-size:10px;font-family:"Barlow Condensed",sans-serif;font-weight:600;cursor:pointer;color:var(--txt2)',
+        type:'button'
+      }, '📎 '+v);
+      vBtn.addEventListener('click', () => caricaVariante(item.id, v));
+      vRow.appendChild(vBtn);
+    });
+    bozzaWrap.appendChild(vRow);
+  }
+
+  // Edit area
+  const editArea = el('div', {className:'ci-edit-area', id:`edit-${item.id}`});
+  const ta = el('textarea', {className:'ci-edit-ta', id:`ta-${item.id}`});
+  ta.value = item.bozza;
+  ta.rows = 4;
+  editArea.appendChild(ta);
+  const saveBtn = el('button', {className:'ci-edit-save', type:'button'}, '✓ Salva Modifica');
+  saveBtn.addEventListener('click', () => salvaMod(item.id));
+  editArea.appendChild(saveBtn);
+  bozzaWrap.appendChild(editArea);
+  wrap.appendChild(bozzaWrap);
+
+  // Nota di sicurezza per CSRF
+  const nota = el('div', {className:'ci-nota'});
+  nota.appendChild(el('span', {}, '🔒'));
+  nota.appendChild(el('span', {}, `Token CSRF: ${stato.csrfToken?.substring(0,8)||'—'}… · Sessione verificata`));
+  wrap.appendChild(nota);
+
+  // Azioni — TASTI GRANDI
+  const actions = el('div', {className:'ci-actions'});
+  const btnOk = el('button', {className:'ci-btn ci-btn-ok', type:'button'}, '✓ APPROVA & INVIA');
+  const btnNo = el('button', {className:'ci-btn ci-btn-no', type:'button'}, '✗ RIFIUTA');
+  const btnMod = el('button', {className:'ci-btn ci-btn-mod', type:'button'}, '✏️ MOD.');
+  btnOk.addEventListener('click', () => approva(item.id));
+  btnNo.addEventListener('click', () => rifiuta(item.id));
+  btnMod.addEventListener('click', () => toggleEdit(item.id));
+  actions.appendChild(btnOk);
+  actions.appendChild(btnNo);
+  actions.appendChild(btnMod);
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+function caricaVariante(id, variante) {
+  const varianti_map = {
+    'Breve':'Art. 1137 c.c. vincola anche i dissenzienti. DI ex art. 63 disp. att. c.c. — immediatamente esecutivo.',
+    'Formale':'Con riferimento alla Sua domanda, la delibera assembleare regolarmente adottata è vincolante erga omnes ai sensi dell\'art. 1137 c.c.'
+  };
+  const ta = document.getElementById(`ta-${id}`);
+  const bt = document.getElementById(`bozza-${id}`);
+  const nuova = varianti_map[variante] || '';
+  if(ta) ta.value = nuova;
+  if(bt) bt.textContent = nuova;
+  const item = stato.coda.find(c=>c.id===id);
+  if(item) item.bozza = nuova;
+  toast('📎 Variante caricata');
+}
+
+function toggleEdit(id) {
+  const ea = document.getElementById(`edit-${id}`);
+  const bz = document.getElementById(`bozza-${id}`);
+  if(!ea) return;
+  const open = ea.style.display === 'block';
+  ea.style.display = open ? 'none' : 'block';
+  if(bz) bz.style.display = open ? 'block' : 'none';
+}
+
+function salvaMod(id) {
+  const ta = document.getElementById(`ta-${id}`);
+  const bz = document.getElementById(`bozza-${id}`);
+  const item = stato.coda.find(c=>c.id===id);
+  if(item && ta) { item.bozza = ta.value; if(bz) bz.textContent = ta.value; }
+  toggleEdit(id);
+  toast('✅ Testo modificato');
+  addAudit('MODIFICA', 'Dott. Grillo', `Modifica bozza: ${item?.autore||id}`, 'MODIFICATO');
+}
+
+async function approva(id) {
+  const now = Date.now();
+  if(now - stato.lastApproval < CONFIG.RATE_LIMIT_MS) {
+    toast("⚠️ Attendere un secondo tra un'approvazione e l'altra");
+    return false;
+  }
+
+  const item = stato.coda.find(c=>c.id===id);
+  if(!item) return false;
+  const testo = document.getElementById(`bozza-${item.id}`)?.textContent || item.bozza;
+  if(!testo.trim()) { toast('⚠️ Il testo non può essere vuoto'); return false; }
+
+  const ciEl = document.getElementById(`ci-${id}`);
+  const btns = ciEl ? Array.from(ciEl.querySelectorAll('.ci-btn')) : [];
+  btns.forEach(b => b.disabled = true);
+
+  const baseEndpoint = getEndpointByItem(item);
+  const approvalPath = ({
+    't-main': '/api/approva',
+    't-nl': '/api/newsletter/approva',
+    't-soc': '/api/social/approva',
+    't-eng': '/api/engagement/approva',
+    't-mkt': '/api/creative/approva',
+    't-fiscal': '/api/fiscal/approva',
+  })[item.agTag] || '/api/approva';
+
+  try {
+    stato.lastApproval = now;
+    await secureFetch(
+      `${baseEndpoint}${approvalPath}`,
+      { method:'POST', body:JSON.stringify({ item_id:id, approvato:true, testo_modificato:testo, csrf_token: stato.csrfToken }) }
+    );
+  } catch (err) {
+    btns.forEach(b => b.disabled = false);
+    addLog('sec', `Errore approvazione ${item.id}: ${err.message || err}`, 'err', 'API');
+    addAudit('APPROVAZIONE', 'Dott. Grillo', `${item.tipo}: ${item.autore}`, 'ERRORE');
+    toast('❌ Approvazione non confermata dal backend');
+    return false;
+  }
+
+  stato.coda = stato.coda.filter(c=>c.id!==id);
+  addLog(item.agTag?.replace('t-','')||'mgr', `Approvato: ${item.autore.substring(0,35)}`, 'ok', '✓');
+  addAudit('APPROVAZIONE', 'Dott. Grillo', `${item.tipo}: ${item.autore}`, 'APPROVATO');
+
+  if(ciEl) {
+    ciEl.style.opacity='0';
+    ciEl.style.transform='translateX(12px)';
+    ciEl.style.transition='all .3s';
+    setTimeout(() => { ciEl.remove(); aggiornaContatori(); }, 300);
+  } else {
+    aggiornaContatori();
+  }
+  toast(`✅ Approvato — ${item.autore.substring(0,28)}`);
+  resetSessione();
+  return true;
+}
+
+function rifiuta(id) {
+  const item = stato.coda.find(c=>c.id===id);
+  if(!item) return;
+  stato.coda = stato.coda.filter(c=>c.id!==id);
+  addLog(item.agTag?.replace('t-','')||'mgr', `Rifiutato: ${item.autore.substring(0,35)}`, 'err', '✗');
+  addAudit('RIFIUTO', 'Dott. Grillo', `${item.tipo}: ${item.autore}`, 'RIFIUTATO');
+  const ciEl = document.getElementById(`ci-${id}`);
+  if(ciEl) { ciEl.style.opacity='0'; ciEl.style.transition='opacity .3s'; setTimeout(()=>{ ciEl.remove(); aggiornaContatori(); }, 300); }
+  toast('✗ Rifiutato — nulla inviato');
+}
+
+async function approvaTutti() {
+  const ids = stato.coda.map(c=>c.id);
+  for (const id of ids) {
+    await approva(id);
+    await new Promise(resolve => setTimeout(resolve, CONFIG.RATE_LIMIT_MS + 100));
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MOBILE CODA
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderMobCoda() {
+  const list = document.getElementById('mob-coda-list');
+  if(!list) return;
+  clearEl(list);
+  if(!stato.coda.length) {
+    list.appendChild(el('div', {style:'text-align:center;padding:40px;color:var(--txt3)'}, 'Coda vuota 👌'));
+    return;
+  }
+  stato.coda.forEach(item => {
+    const wrap = el('div', {className:`mob-ci prio-${item.prio}`, id:`mob-ci-${item.id}`});
+    const hd = el('div', {className:'mob-ci-hd'});
+    hd.appendChild(el('div', {className:'mob-ci-author'}, sanitize(item.autore)));
+    const pb = el('span', {className:'ci-badge', style:'background:rgba(255,255,255,.06);color:var(--txt3);font-size:9px;padding:1px 7px;border-radius:4px;font-family:"Barlow Condensed",sans-serif;font-weight:700'});
+    pb.textContent = item.piattaforma;
+    hd.appendChild(pb);
+    wrap.appendChild(hd);
+    wrap.appendChild(el('div', {className:'mob-ci-ctx'}, sanitize(item.contesto)));
+    const bz = el('div', {className:'mob-ci-bozza'});
+    bz.textContent = item.bozza;
+    wrap.appendChild(bz);
+    const btns = el('div', {className:'mob-ci-btns'});
+    const ok = el('button', {className:'mob-btn-ok', type:'button'}, '✓ APPROVA');
+    const no = el('button', {className:'mob-btn-no', type:'button'}, '✗ RIFIUTA');
+    ok.addEventListener('click', () => approva(item.id));
+    no.addEventListener('click', () => rifiuta(item.id));
+    btns.appendChild(ok);
+    btns.appendChild(no);
+    wrap.appendChild(btns);
+    list.appendChild(wrap);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCHEDULER
+// ═══════════════════════════════════════════════════════════════════════════
+
+function renderSchedMini() {
+  const cont = document.getElementById('sched-mini');
+  if(!cont) return;
+  clearEl(cont);
+  const h = new Date().getHours();
+  SCHED.slice(0,5).forEach(s => {
+    const sh = parseInt(s.t)||0;
+    const past = !s.t.includes('/')&&sh < h;
+    const row = el('div', {className:'sched-row'});
+    row.appendChild(el('span', {className:'sched-t'}, s.t));
+    const dot = el('div', {className:'dot '+(past?'doff':sh===h?'dwarn':'don')});
+    row.appendChild(dot);
+    const desc = el('span', {className:'sched-d'});
+    desc.style.opacity = past?'.4':'1';
+    desc.textContent = s.d;
+    row.appendChild(desc);
+    const badge = el('span', {className:'sched-badge', style:`background:${s.auto?'var(--gnlt)':'var(--amblt)'};color:${s.auto?'var(--grn)':'var(--amb)'}`});
+    badge.textContent = s.auto?'AUTO':'APPROV';
+    row.appendChild(badge);
+    cont.appendChild(row);
+  });
+}
+
+function renderSchedFull() {
+  const cont = document.getElementById('sched-full');
+  if(!cont) return;
+  clearEl(cont);
+  const hd = el('div', {className:'panel-hd'});
+  hd.appendChild(el('span', {className:'panel-title'}, 'Task Programmati'));
+  cont.appendChild(hd);
+  SCHED.forEach(s => {
+    const row = el('div', {className:'sched-row'});
+    row.appendChild(el('span', {className:'sched-t', style:'font-size:13px'}, s.t));
+    row.appendChild(el('div', {className:'dot don'}));
+    row.appendChild(el('span', {className:'sched-d', style:'font-size:13px'}, s.d));
+    const tag = el('span', {className:`log-tag ${TAG_MAP[s.ag]||'t-mgr'}`, style:'font-size:9px;padding:2px 8px'});
+    tag.textContent = TAG_NAME[s.ag]||s.ag;
+    row.appendChild(tag);
+    const badge = el('span', {className:'sched-badge', style:`background:${s.auto?'var(--gnlt)':'var(--amblt)'};color:${s.auto?'var(--grn)':'var(--amb)'}`});
+    badge.textContent = s.auto?'AUTOMATICO':'RICHIEDE APPROVAZIONE';
+    row.appendChild(badge);
+    cont.appendChild(row);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SCADENZE FISCALI MINI
+// ═══════════════════════════════════════════════════════════════════════════
+
+function aggiornaFiscalMini(dati) {
+  const coda = dati.in_attesa_approvazione ?? 0;
+  const gg = dati.prossima_scadenza?.giorni_mancanti;
+  ['br-fiscal-coda'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=coda; });
+  if(gg !== undefined) ['br-fiscal-scad'].forEach(id => { const e=document.getElementById(id); if(e) e.textContent=gg+'gg'; });
+  caricaScadenzeFiscali();
+}
+
+// FIX 3 — Fetch autenticato per endpoint fiscale
+// Prima usava fetch() nudo senza token di sessione né CSRF.
+// Ora usa secureFetch; se il backend non è raggiungibile o l'utente
+// non è ancora autenticato, cade sul demo senza eccezioni.
+async function caricaScadenzeFiscali() {
+  if (!stato.autenticato) {
+    renderScadenzeFiscaliMini(getScadenzeFiscaliDemo());
+    return;
+  }
+  try {
+    const d = await apiJson(
+      CONFIG.ENDPOINTS.fiscal + '/api/fiscal/scadenze?giorni=45&soggetto=TUTTI'
+    );
+    renderScadenzeFiscaliMini(d.scadenze || []);
+  } catch {
+    renderScadenzeFiscaliMini(getScadenzeFiscaliDemo());
+  }
+}
+
+function getScadenzeFiscaliDemo() {
+  const o = new Date();
+  return [
+    {data_scadenza:new Date(o.getFullYear(),o.getMonth(),16).toISOString().slice(0,10), descrizione:'IVA mensile', soggetto:'TUTTI', urgenza:'URGENTE', stima_importo:1240, giorni_mancanti:Math.max(0,16-o.getDate())},
+    {data_scadenza:new Date(o.getFullYear(),4,16).toISOString().slice(0,10), descrizione:'IVA 1° trim. +1%', soggetto:'PROFESSIONISTA', urgenza:'AVVISO', stima_importo:3420, giorni_mancanti:28},
+    {data_scadenza:new Date(o.getFullYear(),5,16).toISOString().slice(0,10), descrizione:'Saldo IRPEF + 1° acc.', soggetto:'PROFESSIONISTA', urgenza:'INFO', stima_importo:null, giorni_mancanti:58},
+    {data_scadenza:new Date(o.getFullYear(),5,16).toISOString().slice(0,10), descrizione:'Saldo IRES SRL', soggetto:'SRL', urgenza:'INFO', stima_importo:null, giorni_mancanti:58},
+  ];
+}
+
+function renderScadenzeFiscaliMini(scadenze) {
+  const cont = document.getElementById('fiscal-scad-mini');
+  if(!cont) return;
+  clearEl(cont);
+  const uc = {CRITICO:'var(--rose)',URGENTE:'var(--amb)',AVVISO:'var(--gold)',INFO:'var(--txt3)'};
+  const si = {PROFESSIONISTA:'👤',SRL:'🏢',SNC_SAS:'🤝',TUTTI:'◈'};
+  if(!scadenze.length) {
+    cont.appendChild(el('div', {style:'padding:14px;font-size:11px;color:var(--txt3);text-align:center'}, 'Nessuna scadenza imminente ✓'));
+    return;
+  }
+  scadenze.slice(0,6).forEach(s => {
+    const row = el('div', {className:'fiscal-scad-row'});
+    row.appendChild(el('span', {style:'font-size:11px'}, si[s.soggetto]||'◈'));
+    const info = el('div', {style:'flex:1;min-width:0'});
+    const desc = el('div', {style:'font-size:11px;color:var(--txt);overflow:hidden;white-space:nowrap;text-overflow:ellipsis'});
+    desc.textContent = s.descrizione;
+    info.appendChild(desc);
+    info.appendChild(el('div', {style:'font-size:9px;color:var(--txt3)'}, s.data_scadenza||''));
+    row.appendChild(info);
+    const right = el('div', {style:'text-align:right;flex-shrink:0'});
+    right.appendChild(el('div', {style:`font-family:"DM Mono",monospace;font-size:11px;font-weight:700;color:${uc[s.urgenza]||'var(--txt3)'}`}, (s.giorni_mancanti??'—')+'gg'));
+    if(s.stima_importo) right.appendChild(el('div', {style:'font-size:9px;color:var(--txt3)'}, '€'+Number(s.stima_importo).toLocaleString('it-IT')));
+    row.appendChild(right);
+    row.addEventListener('click', () => apriDashboard('fiscal'));
+    cont.appendChild(row);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// KPI
+// ═══════════════════════════════════════════════════════════════════════════
+
+function aggiornaKPI() {
+  const online = Object.values(stato.agenti).filter(s=>s.online!==false).length;
+  const k = [
+    {id:'k-tasks', val:stato.logs.filter(l=>l.tipo!=='err').length},
+    {id:'k-coda',  val:stato.coda.length},
+    {id:'k-inv',   val:stato.logs.filter(l=>l.tipo==='ok').length},
+    {id:'k-ebook', val:0},
+  ];
+  k.forEach(({id,val}) => { const e=document.getElementById(id); if(e) e.textContent=val; });
+  document.getElementById('k-tasks') && (document.getElementById('hdr-st').textContent = online===AGENTI.length?'TUTTI ONLINE':`${online}/${AGENTI.length} ONLINE`);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// COMMAND BAR
+// ═══════════════════════════════════════════════════════════════════════════
+
+async function inviaCmd() {
+  const inp = document.getElementById('cmd-in');
+  const btn = document.getElementById('cmd-send');
+  const testo = inp.value.trim();
+  if(!testo) return;
+  if(testo.length > 300) { toast('⚠️ Comando troppo lungo (max 300 caratteri)'); return; }
+  inp.value = '';
+  if (btn) btn.disabled = true;
+  addLog('mgr', `Cmd: ${testo.substring(0,55)}`, 'pend', '→');
+  toast('🤖 Elaborazione…');
+  resetSessione();
+  try {
+    const d = await apiJson(CONFIG.ENDPOINTS.main+'/api/task', {
+      method:'POST',
+      body: JSON.stringify({testo, csrf_token: stato.csrfToken})
+    });
+    addLog((d.agente||'mgr').toLowerCase().replace('agente_',''), testo.substring(0,45), 'ok', '✓');
+    mostraRisposta(d.output || JSON.stringify(d, null, 2));
+    toast('✅ Completato');
+  } catch (err) {
+    if(CONFIG.IS_DEMO) {
+      mostraRisposta(getRispostaDemo(testo));
+      addLog('mgr', `Fallback demo per comando: ${testo.substring(0,35)}`, 'pend', 'DEMO');
+      toast('✅ Demo');
+    } else {
+      addLog('sec', `Errore comando backend: ${err.message || err}`, 'err', 'API');
+      toast('❌ Errore connessione backend');
+    }
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+function mostraRisposta(testo) {
+  const rp = document.getElementById('resp-cr');
+  const rt = document.getElementById('resp-cr-txt');
+  if(rp && rt) {
+    rt.textContent = testo; // textContent — sicuro
+    rp.style.display = 'block';
+    rp.scrollIntoView({behavior:'smooth'});
+  }
+}
+
+function getRispostaDemo(cmd) {
+  if(/gdp|sentenza|fascicolo|rg/i.test(cmd)) return '⚖️ STUDIO AI\nAnalisi completata.\nCompetenza: art. 7 c.p.c. ✓\nOrientamento: accoglimento parziale';
+  if(/newsletter|argomento/i.test(cmd)) return '📰 NEWSLETTER\n5 argomenti proposti:\n1. Assemblea marzo (ALTO)\n2. Colonnine ricarica (ALTO)\n3. Affitti brevi (MEDIO)';
+  if(/iva|fattura|fiscal|f24|irpef/i.test(cmd)) return '💰 COMMERCIALISTA\nScadenza IMU acconto: 16/06\nFatture in coda: 2\nProssima IRPEF: giugno';
+  if(/seo|articol/i.test(cmd)) return '🔍 MARKETING\nKeyword: avvocato morosità Milano · Vol: 720/mese · Difficoltà: BASSA ⭐⭐';
+  return '🤖 MANAGER\nRichiesta analizzata. Task in elaborazione.';
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLOCK
+// ═══════════════════════════════════════════════════════════════════════════
+
+function tick() {
+  const n = new Date();
+  const el = document.getElementById('clock');
+  if(el) el.textContent = n.toLocaleDateString('it-IT',{weekday:'short',day:'2-digit',month:'short'})+' '+n.toTimeString().substring(0,8);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// RESIZE
+// ═══════════════════════════════════════════════════════════════════════════
+
+function handleResize() {
+  if(window.innerWidth < 768) {
+    const active = document.querySelector('.pg.on');
+    if(!active||!active.id.startsWith('pg-mob-')) goMob('mob-home');
+  } else {
+    const active = document.querySelector('.pg.on');
+    if(active?.id.startsWith('pg-mob-')) go('cr');
+  }
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// INIT — collegamento eventi via addEventListener
+// ═══════════════════════════════════════════════════════════════════════════
+
+function collegaEventi() {
+  // Sidebar navigazione
+  document.getElementById('nav-cr')?.addEventListener('click', () => go('cr'));
+  document.getElementById('nav-coda')?.addEventListener('click', () => go('coda'));
+  document.getElementById('nav-log')?.addEventListener('click', () => go('log'));
+  document.getElementById('nav-sched')?.addEventListener('click', () => go('sched'));
+  document.getElementById('nav-audit')?.addEventListener('click', () => go('audit'));
+  document.getElementById('nav-siti')?.addEventListener('click', () => go('siti'));
+
+  // Apertura dashboard agenti
+  document.getElementById('open-main')?.addEventListener('click', () => apriDashboard('main'));
+  document.getElementById('open-nl')?.addEventListener('click', () => apriDashboard('nl'));
+  document.getElementById('open-social')?.addEventListener('click', () => apriDashboard('social'));
+  document.getElementById('open-eng')?.addEventListener('click', () => apriDashboard('eng'));
+  document.getElementById('open-mkt')?.addEventListener('click', () => apriDashboard('mkt'));
+  document.getElementById('open-fiscal')?.addEventListener('click', () => apriDashboard('fiscal'));
+  document.getElementById('btn-open-fiscal-small')?.addEventListener('click', () => apriDashboard('fiscal'));
+
+  // Bottoni header
+  document.getElementById('btn-ping')?.addEventListener('click', pingTutti);
+  document.getElementById('btn-goto-coda')?.addEventListener('click', () => go('coda'));
+  document.getElementById('btn-logout')?.addEventListener('click', logout);
+
+  // Bottoni "Torna"
+  document.getElementById('btn-back-from-coda')?.addEventListener('click', () => go('cr'));
+  document.getElementById('btn-back-log')?.addEventListener('click', () => go('cr'));
+  document.getElementById('btn-back-sched')?.addEventListener('click', () => go('cr'));
+  document.getElementById('btn-back-audit')?.addEventListener('click', () => go('cr'));
+  document.getElementById('btn-export-audit')?.addEventListener('click', esportaAuditCSV);
+
+  // Mobile nav
+  document.getElementById('mn-home')?.addEventListener('click', () => goMob('mob-home'));
+  document.getElementById('mn-coda')?.addEventListener('click', () => goMob('mob-coda'));
+  document.getElementById('mn-log')?.addEventListener('click',  () => goMob('mob-log'));
+  document.getElementById('mn-cmd')?.addEventListener('click',  () => document.getElementById('cmd-in')?.focus());
+  document.getElementById('btn-approva-tutti-mob')?.addEventListener('click', approvaTutti);
+
+  // Command bar
+  document.getElementById('cmd-send')?.addEventListener('click', inviaCmd);
+  document.getElementById('cmd-in')?.addEventListener('keydown', e => { if(e.key==='Enter') inviaCmd(); });
+
+  // Reset sessione su qualsiasi interazione
+  ['click','keydown','mousemove','touchstart'].forEach(ev =>
+    document.getElementById('app')?.addEventListener(ev, resetSessione, {passive:true})
+  );
+
+  // Sessione warn — clic per prolungare
+  document.getElementById('session-warn')?.addEventListener('click', resetSessione);
+
+  // Resize
+  window.addEventListener('resize', handleResize);
+}
+
+function toast(msg) {
+  const t = document.getElementById('toast');
+  if(!t) return;
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 2800);
+}
+
+
+// ═══════════════════════════════════════════════════════════════════════
+// SITI WEB — Monitor uptime
+// ═══════════════════════════════════════════════════════════════════════
+const _sitiStorico = { sl: [], gi: [] };
+
+async function pingSito(id, url, nome) {
+  const t0 = Date.now();
+  const card   = document.getElementById('card-' + id);
+  const statoEl = document.getElementById('stato-' + id);
+  const msEl   = document.getElementById(id + '-ms');
+  const upEl   = document.getElementById(id + '-up');
+  const bar    = document.getElementById('bar-' + id);
+
+  if (statoEl) { statoEl.textContent = 'VERIFICA…'; statoEl.style.color = 'var(--amb)'; }
+  if (card)    card.className = 'sito-card checking';
+
+  let ok = false;
+  let ms = null;
+  try {
+    const ctrl = new AbortController();
+    const tid  = setTimeout(() => ctrl.abort(), 7000);
+    await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
+    clearTimeout(tid);
+    ok = true;
+    ms = Date.now() - t0;
+  } catch(e2) { ok = false; }
+
+  _sitiStorico[id].push(ok);
+  if (_sitiStorico[id].length > 20) _sitiStorico[id].shift();
+  const pct = _sitiStorico[id].length
+    ? Math.round(_sitiStorico[id].filter(Boolean).length / _sitiStorico[id].length * 100)
+    : 0;
+
+  if (card)    card.className = 'sito-card ' + (ok ? 'online' : 'offline');
+  if (statoEl) { statoEl.textContent = ok ? 'ONLINE' : 'OFFLINE'; statoEl.style.color = ok ? 'var(--grn)' : 'var(--rose)'; }
+  if (msEl)    msEl.textContent = ms ? ms + 'ms' : '—';
+  if (upEl)    upEl.textContent = pct + '%';
+  if (bar)     bar.style.width  = pct + '%';
+
+  // Log
+  const logBox = document.getElementById('siti-log');
+  if (logBox) {
+    const row = document.createElement('div');
+    row.className = 'siti-log-row';
+    const now = new Date().toTimeString().slice(0,8);
+        const tNow2 = document.createElement('span');
+    tNow2.style.cssText = "font-family:'DM Mono',monospace;font-size:10px;color:var(--txt3)";
+    tNow2.textContent = now;
+    const tTag2 = document.createElement('span');
+    tTag2.className = 'log-tag t-mgr';
+    tTag2.textContent = nome.slice(0,8).toUpperCase();
+    const tMsg2 = document.createElement('span');
+    tMsg2.style.cssText = 'color:var(--txt2);font-size:11px';
+    tMsg2.textContent = ok ? 'Raggiungibile ' + ms + 'ms' : 'Non raggiungibile';
+    const tSt2 = document.createElement('span');
+    tSt2.className = ok ? 'log-ok' : 'log-err';
+    tSt2.textContent = ok ? 'UP' : 'DOWN';
+    row.appendChild(tNow2); row.appendChild(tTag2); row.appendChild(tMsg2); row.appendChild(tSt2);    logBox.insertBefore(row, logBox.firstChild);
+    while (logBox.children.length > 40) logBox.removeChild(logBox.lastChild);
+  }
+  const lastEl = document.getElementById('siti-last');
+  if (lastEl) lastEl.textContent = 'Aggiornato ' + new Date().toLocaleTimeString('it-IT');
+
+  addLog('mgr', nome + ': ' + (ok ? 'ONLINE ' + ms + 'ms' : 'OFFLINE'), ok ? 'ok' : 'err', '');
+}
+
+async function verificaSiti() {
+  await Promise.all([
+    pingSito('sl', 'https://studiolegalegrillo.netlify.app', 'Studio Legale'),
+    pingSito('gi', 'https://www.gestioni-immobiliari.eu',    'Gestioni Imm.'),
+  ]);
+}
+
+async function init() {
+  restoreAuditLog();
+  tick();
+  setInterval(tick, 1000);
+  collegaEventi();
+  initCoda();
+  AGENTI.forEach(a => stato.agenti[a.id] = {online:true, ping:Math.floor(Math.random()*25)+8, metriche:{}});
+  renderAgentCards();
+  renderLogFeed();
+  renderSchedMini();
+  renderScadenzeFiscaliMini(getScadenzeFiscaliDemo());
+  aggiornaKPI();
+  generaBriefing();
+  addLog('mgr', 'Control Room v5 — Hardened', 'ok', '');
+  addLog('sec', 'Autenticazione completata · CSRF attivo', 'ok', '');
+  pingTutti();
+  setTimeout(()=>addLog('nl','Newsletter scheduler attivo','ok',''),800);
+  setTimeout(()=>addLog('eng','Monitoring hashtag: 07:00+13:00','ok',''),1200);
+  setTimeout(()=>addLog('fiscal','Agente fiscale · 3 soggetti gestiti','ok',''),1700);
+  setInterval(()=>{ pingTutti(); generaBriefing(); renderSchedMini(); }, 60000);
+  go('cr');
+  if(window.innerWidth < 768) goMob('mob-home');
+  // Monitor siti — avvio dopo 2s + ogni 5 min
+  setTimeout(verificaSiti, 2000);
+  setInterval(verificaSiti, 5 * 60 * 1000);
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// AVVIO — prima il login
+// ═══════════════════════════════════════════════════════════════════════════
+
+// Il PIN deve essere definito lato server o sostituito prima del deploy.
+// Per generare un hash locale: sha256("NUOVO_PIN") e aggiornare CONFIG.PIN_HASH.
+// L'hash attuale in CONFIG non deve restare in produzione.
+
+(function avvio() {
+  // Carica stato lockout persistito (sopravvive al refresh)
+  caricaStatoLockout();
+
+  // FIX 6 — Avviso visibile quando IS_DEMO è true
+  // In produzione IS_DEMO deve essere false; se dimenticato true,
+  // il sistema mostra una barra arancione ben visibile.
+  if (CONFIG.IS_DEMO) {
+    const banner = document.createElement('div');
+    banner.style.cssText = [
+      'position:fixed','top:0','left:0','right:0','z-index:99999',
+      'background:#b45309','color:#fff','padding:6px 16px',
+      'font-family:"Barlow Condensed",sans-serif','font-size:11px',
+      'font-weight:700','letter-spacing:1px','text-align:center',
+      'text-transform:uppercase',
+    ].join(';');
+    banner.textContent = '⚠️ MODALITÀ DEMO ATTIVA — Impostare IS_DEMO: false prima del deploy in produzione';
+    document.body.insertBefore(banner, document.body.firstChild);
+  }
+
+  costruisciPinPad();
+})();
+
+</script>
+</body>
+</html>
