@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1">
 <!--
   ╔══════════════════════════════════════════════════════════════════╗
-  ║  Studio Grillo — Control Room v6 — Web Monitor                          ║
+  ║  Studio Grillo — Control Room v6 — Web Monitor                  ║
   ║  SECURITY HARDENED — Build definitivo                           ║
   ║                                                                  ║
   ║  Risponde al report audit + 6 fix aggiuntivi dal code-review    ║
@@ -55,11 +55,21 @@
                        http://localhost:8002 http://localhost:8003
                        http://localhost:8004 http://localhost:8005;
     img-src 'self' data:;
-    
+    frame-ancestors 'none';
 
   Per ora usiamo meta CSP (parziale — non sostituisce gli header HTTP):
 -->
+<meta http-equiv="Content-Security-Policy"
+  content="default-src 'self';
+           script-src 'self' 'nonce-REPLACE_WITH_SERVER_NONCE';
+           style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+           font-src https://fonts.gstatic.com;
+           connect-src 'self' http://localhost:8000 http://localhost:8001 https://control-room-production-8173.up.railway.app http://localhost:8003 http://localhost:8004 http://localhost:8005;
+           img-src 'self' data:;
+           frame-ancestors 'none';
+           base-uri 'self';">
 <meta http-equiv="X-Content-Type-Options" content="nosniff">
+<meta http-equiv="X-Frame-Options" content="DENY">
 <meta http-equiv="Referrer-Policy" content="no-referrer">
 <title>Studio Grillo — Control Room</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -329,27 +339,29 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
 
 ::-webkit-scrollbar{width:4px;height:4px}::-webkit-scrollbar-track{background:transparent}::-webkit-scrollbar-thumb{background:var(--bg3);border-radius:2px}
 
-/* ── SITI WEB MONITOR ────────────────────────────── */
-.sito-card{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:16px;margin-bottom:14px}
-.sito-card.online{border-left:4px solid var(--grn)}
-.sito-card.offline{border-left:4px solid var(--rose)}
-.sito-card.checking{border-left:4px solid var(--amb)}
-.sito-hd{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+/* ── SITI MONITOR ─────────────────────────────────────── */
+.siti-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-top:12px}
+.sito-card{background:var(--panel);border:1px solid var(--brd);border-radius:var(--r);padding:16px;transition:all .2s}
+.sito-card:hover{border-color:var(--brd2);transform:translateY(-1px)}
+.sito-card.online{border-top:3px solid var(--grn)}
+.sito-card.offline{border-top:3px solid var(--rose)}
+.sito-card.checking{border-top:3px solid var(--amb)}
+.sito-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
 .sito-nome{font-family:'Bebas Neue',sans-serif;font-size:15px;letter-spacing:1.5px;color:var(--txt)}
-.sito-stato{font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:1px;text-transform:uppercase}
-.sito-url{font-family:'DM Mono',monospace;font-size:10px;color:var(--txt3);margin-bottom:10px}
-.sito-mx{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
-.smx{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:var(--rsm);padding:7px;text-align:center}
-.smx-v{font-family:'DM Mono',monospace;font-size:13px;color:var(--txt);line-height:1.2}
-.smx-l{font-size:8px;color:var(--txt3);text-transform:uppercase;letter-spacing:.5px;font-family:'Barlow Condensed',sans-serif}
-.sito-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:8px}
-.sito-btn{padding:5px 12px;border:1px solid var(--brd2);border-radius:var(--rsm);font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;background:rgba(255,255,255,.04);color:var(--txt2);transition:all .15s}
+.sito-status{display:flex;align-items:center;gap:5px;font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase}
+.sito-url{font-size:10px;color:var(--txt3);font-family:'DM Mono',monospace;margin-bottom:10px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis}
+.sito-metrics{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:10px}
+.sm-box{background:rgba(255,255,255,.03);border:1px solid var(--brd);border-radius:var(--rsm);padding:7px 8px;text-align:center}
+.sm-val{font-family:'DM Mono',monospace;font-size:13px;color:var(--txt);line-height:1}
+.sm-lbl{font-size:8px;color:var(--txt3);font-family:'Barlow Condensed',sans-serif;text-transform:uppercase;letter-spacing:.3px;margin-top:2px}
+.sito-actions{display:flex;gap:6px;flex-wrap:wrap}
+.sito-btn{padding:5px 10px;border:1px solid var(--brd2);border-radius:var(--rsm);font-size:9px;font-family:'Barlow Condensed',sans-serif;font-weight:700;letter-spacing:.5px;text-transform:uppercase;cursor:pointer;background:rgba(255,255,255,.04);color:var(--txt2);transition:all .15s}
 .sito-btn:hover{background:rgba(255,255,255,.1);color:var(--gold)}
-.sito-btn.sp{background:var(--gold);color:#0a0e14;border-color:var(--gold)}
-.sito-btn.sp:hover{background:var(--gold2)}
-.upbar{height:3px;background:var(--bg3);border-radius:2px;overflow:hidden;margin-top:8px}
-.upbar-fill{height:100%;background:var(--grn);border-radius:2px;transition:width .6s}
-.siti-log-row{display:grid;grid-template-columns:60px 80px 1fr 50px;gap:8px;padding:5px 0;border-bottom:1px solid rgba(255,255,255,.04);font-size:11px;align-items:center}
+.sito-btn.primary{background:var(--gold);color:#0a0e14;border-color:var(--gold)}
+.sito-btn.primary:hover{background:var(--gold2)}
+.sito-ping{font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3)}
+.sito-uptime-bar{height:4px;background:var(--bg3);border-radius:2px;margin-top:8px;overflow:hidden}
+.sito-uptime-fill{height:100%;background:var(--grn);border-radius:2px;transition:width .5s}
 </style>
 </head>
 <body>
@@ -364,8 +376,6 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div class="pin-dot" id="pd1"></div>
       <div class="pin-dot" id="pd2"></div>
       <div class="pin-dot" id="pd3"></div>
-      <div class="pin-dot" id="pd4"></div>
-      <div class="pin-dot" id="pd5"></div>
     </div>
     <div class="pin-grid" id="pin-grid">
       <!-- Popolato da JS — no onclick inline -->
@@ -418,7 +428,7 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     <div class="sb-lbl" style="padding:6px 0 4px">Porte</div>
     <div class="sb-ag-row"><div class="dot don" id="dot-main"></div><span>:8000 Studio</span></div>
     <div class="sb-ag-row"><div class="dot don" id="dot-nl"></div><span>:8001 Newsletter</span></div>
-    <div class="sb-ag-row"><div class="dot don" id="dot-social"></div><span>:8002 Social</span></div>
+    <div class="sb-ag-row"><div class="dot don" id="dot-social"></div><span>Social (cloud)</span></div>
     <div class="sb-ag-row"><div class="dot don" id="dot-eng"></div><span>:8003 Engagement</span></div>
     <div class="sb-ag-row"><div class="dot don" id="dot-mkt"></div><span>:8004 Marketing</span></div>
     <div class="sb-ag-row"><div class="dot don" id="dot-fiscal"></div><span>:8005 Fiscale</span></div>
@@ -529,64 +539,75 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
     </div>
   </div>
 
-
-  <!-- ══ SITI WEB MONITOR ══ -->
+  <!-- SITI WEB MONITOR -->
   <div class="pg" id="pg-siti">
     <div class="pg-hd">
       <div>
         <div class="pg-title">SITI WEB</div>
-        <div class="pg-sub">Monitoraggio uptime · Accesso rapido · Ping automatico ogni 5 min</div>
+        <div class="pg-sub">Monitoraggio · Uptime · Accesso rapido</div>
       </div>
-      <button class="btn btn-ghost btn-sm" onclick="verificaSiti()">↺ Verifica ora</button>
+      <button class="btn btn-ghost btn-sm" id="btn-ping-siti">↺ Verifica ora</button>
     </div>
 
-    <!-- Studio Legale -->
-    <div class="sito-card" id="card-sl">
-      <div class="sito-hd">
-        <div class="sito-nome">⚖️ Studio Legale Grillo</div>
-        <div class="sito-stato" id="stato-sl" style="color:var(--txt3)">—</div>
+    <!-- STUDIO LEGALE -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hd">
+        <span class="panel-title">⚖️ Studio Legale — Avv. Gianluigi Grillo</span>
+        <span class="sito-ping" id="ping-studiolegale">—</span>
       </div>
-      <div class="sito-url">studiolegalegrillo.netlify.app</div>
-      <div class="sito-mx">
-        <div class="smx"><div class="smx-v" id="sl-up">—</div><div class="smx-l">Uptime</div></div>
-        <div class="smx"><div class="smx-v" id="sl-ms">—</div><div class="smx-l">Ping</div></div>
-        <div class="smx"><div class="smx-v" id="sl-ssl" style="color:var(--grn)">✓</div><div class="smx-l">SSL</div></div>
-      </div>
-      <div class="upbar"><div class="upbar-fill" id="bar-sl" style="width:0%"></div></div>
-      <div class="sito-acts">
-        <button class="sito-btn sp" onclick="window.open('https://studiolegalegrillo.netlify.app','_blank','noopener')">↗ Apri sito</button>
-        <button class="sito-btn" onclick="pingSito('sl','https://studiolegalegrillo.netlify.app','Studio Legale')">◎ Verifica</button>
-      </div>
-    </div>
-
-    <!-- Gestioni Immobiliari -->
-    <div class="sito-card" id="card-gi">
-      <div class="sito-hd">
-        <div class="sito-nome">🏢 Gestioni Immobiliari</div>
-        <div class="sito-stato" id="stato-gi" style="color:var(--txt3)">—</div>
-      </div>
-      <div class="sito-url">www.gestioni-immobiliari.eu</div>
-      <div class="sito-mx">
-        <div class="smx"><div class="smx-v" id="gi-up">—</div><div class="smx-l">Uptime</div></div>
-        <div class="smx"><div class="smx-v" id="gi-ms">—</div><div class="smx-l">Ping</div></div>
-        <div class="smx"><div class="smx-v" id="gi-ssl" style="color:var(--grn)">✓</div><div class="smx-l">SSL</div></div>
-      </div>
-      <div class="upbar"><div class="upbar-fill" id="bar-gi" style="width:0%"></div></div>
-      <div class="sito-acts">
-        <button class="sito-btn sp" onclick="window.open('https://www.gestioni-immobiliari.eu','_blank','noopener')">↗ Apri sito</button>
-        <button class="sito-btn" onclick="window.open('https://www.gestioni-immobiliari.eu/wp-admin/','_blank','noopener')">⚙️ WP Admin</button>
-        <button class="sito-btn" onclick="window.open('https://search.google.com/search-console','_blank','noopener')">📊 Search Console</button>
-        <button class="sito-btn" onclick="pingSito('gi','https://www.gestioni-immobiliari.eu','Gestioni Immobiliari')">◎ Verifica</button>
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="dot" id="dot-studiolegale" style="width:8px;height:8px"></div>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--txt2)">studiolegalegrillo.netlify.app</span>
+          <span id="status-studiolegale" style="font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;color:var(--txt3)">Verifica…</span>
+        </div>
+        <div class="sito-metrics" id="metrics-studiolegale">
+          <div class="sm-box"><div class="sm-val" id="sl-uptime">—</div><div class="sm-lbl">Uptime</div></div>
+          <div class="sm-box"><div class="sm-val" id="sl-ping">—</div><div class="sm-lbl">Ping</div></div>
+          <div class="sm-box"><div class="sm-val" id="sl-ssl">—</div><div class="sm-lbl">SSL</div></div>
+        </div>
+        <div class="sito-uptime-bar"><div class="sito-uptime-fill" id="bar-studiolegale" style="width:0%"></div></div>
+        <div class="sito-actions" style="margin-top:10px">
+          <button class="sito-btn primary" id="btn-open-studiolegale">↗ Apri sito</button>
+          <button class="sito-btn" id="btn-check-studiolegale">◎ Verifica</button>
+        </div>
       </div>
     </div>
 
-    <!-- Log -->
+    <!-- GESTIONI IMMOBILIARI -->
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-hd">
+        <span class="panel-title">🏢 Gestioni Immobiliari — gestioni-immobiliari.eu</span>
+        <span class="sito-ping" id="ping-gestioni">—</span>
+      </div>
+      <div style="padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div class="dot" id="dot-gestioni" style="width:8px;height:8px"></div>
+          <span style="font-family:'DM Mono',monospace;font-size:11px;color:var(--txt2)">www.gestioni-immobiliari.eu</span>
+          <span id="status-gestioni" style="font-size:10px;font-weight:700;font-family:'Barlow Condensed',sans-serif;letter-spacing:.5px;text-transform:uppercase;color:var(--txt3)">Verifica…</span>
+        </div>
+        <div class="sito-metrics">
+          <div class="sm-box"><div class="sm-val" id="gi-uptime">—</div><div class="sm-lbl">Uptime</div></div>
+          <div class="sm-box"><div class="sm-val" id="gi-ping">—</div><div class="sm-lbl">Ping</div></div>
+          <div class="sm-box"><div class="sm-val" id="gi-ssl">✓</div><div class="sm-lbl">SSL</div></div>
+        </div>
+        <div class="sito-uptime-bar"><div class="sito-uptime-fill" id="bar-gestioni" style="width:0%"></div></div>
+        <div class="sito-actions" style="margin-top:10px">
+          <button class="sito-btn primary" id="btn-open-gestioni">↗ Apri sito</button>
+          <button class="sito-btn" id="btn-open-gestioni-wp">⚙️ WP Admin</button>
+          <button class="sito-btn" id="btn-open-search-console">📊 Search Console</button>
+          <button class="sito-btn" id="btn-check-gestioni">◎ Verifica</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- LOG VERIFICHE -->
     <div class="panel">
       <div class="panel-hd">
         <span class="panel-title">◈ Log verifiche</span>
-        <span id="siti-last" style="font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3)">Mai verificato</span>
+        <span style="font-family:'DM Mono',monospace;font-size:9px;color:var(--txt3)" id="siti-last-check">Mai verificato</span>
       </div>
-      <div id="siti-log" style="padding:8px 14px;max-height:220px;overflow-y:auto"></div>
+      <div id="siti-log" style="max-height:200px;overflow-y:auto"></div>
     </div>
   </div>
 
@@ -643,25 +664,31 @@ const CONFIG = Object.freeze({
   IS_DEMO: true,           // ← false in produzione (disabilita fallback demo)
   SESSION_TIMEOUT_MS: 30 * 60 * 1000,   // 30 minuti
   SESSION_WARN_MS:    29 * 60 * 1000,   // avvisa a 29 min
-  PIN_HASH: 'b0ef553de510c6b0788f919e49e01f86b95cc87a09c4c28a69cc405f92ce96ec', // PIN: 6 cifre
+  PIN_HASH: '8c6976e5b5410415bde908bd4dee15dfb167a9c873fc4bb8a81f6f2ab448a918', // hash SHA-256 di "admin" — CAMBIARE
   MAX_LOGIN_ATTEMPTS: 5,
   LOCKOUT_MS: 5 * 60 * 1000,           // 5 minuti di lockout
   RATE_LIMIT_MS: 1000,                  // 1 secondo tra approvazioni
   ENDPOINTS: {
     main:   'http://localhost:8000',
     nl:     'http://localhost:8001',
-    social: 'http://localhost:8002',
+    social: 'https://control-room-production-8173.up.railway.app',
     eng:    'http://localhost:8003',
     mkt:    'http://localhost:8004',
     fiscal: 'http://localhost:8005',
   },
   DASHBOARDS: {
-    main:   'studio_grillo/frontend/index.html',
-    nl:     'newsletter_agent/frontend/newsletter.html',
-    social: 'social_agent/frontend/social_dashboard.html',
-    eng:    'social_agent/frontend/engagement_dashboard.html',
-    mkt:    'creative_agents/frontend/creative_dashboard.html',
-    fiscal: 'fiscal_agent/frontend/fiscal_dashboard.html',
+    main:   'http://localhost:8000/api/docs',
+    nl:     'http://localhost:8001/api/newsletter/docs',
+    social: 'https://control-room-production-8173.up.railway.app/api/social/docs',
+    eng:    'http://localhost:8003/api/engagement/docs',
+    mkt:    'http://localhost:8004/api/creative/docs',
+    fiscal: 'http://localhost:8005/api/fiscal/docs',
+  },
+  SITI: {
+    studiolegale:    'https://studiolegalegrillo.netlify.app',
+    gestioni:        'https://www.gestioni-immobiliari.eu',
+    gestioniAdmin:   'https://www.gestioni-immobiliari.eu/wp-admin/',
+    searchConsole:   'https://search.google.com/search-console',
   }
 });
 
@@ -936,16 +963,16 @@ function handlePin(val) {
   } else if (val === 'OK') {
     verificaPin();
     return;
-  } else if (stato.pinBuffer.length < 6) {
+  } else if (stato.pinBuffer.length < 4) {
     stato.pinBuffer += val;
   }
   // Auto-submit se 4 cifre
-  if (stato.pinBuffer.length === 6) verificaPin();
+  if (stato.pinBuffer.length === 4) verificaPin();
   aggiornaDotsPin();
 }
 
 function aggiornaDotsPin() {
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < 4; i++) {
     const dot = document.getElementById(`pd${i}`);
     if (dot) dot.className = `pin-dot${i < stato.pinBuffer.length ? ' filled' : ''}`;
   }
@@ -1310,6 +1337,8 @@ function generaBriefing() {
       {ico:'📧', id:'br-email', val:'8', lbl:'Email', cls:'info'},
       {ico:'📅', id:'br-udienze', val:'3', lbl:'Udienze', cls:'ok'},
       {ico:'💰', id:'br-fiscal-coda', val:'0', lbl:'Fatture fiscale', cls:'urgente'},
+      {ico:'🌐', id:'br-sito-sl', val:'—', lbl:'Studio Legale', cls:'ok'},
+      {ico:'🏢', id:'br-sito-gi', val:'—', lbl:'Gestioni Imm.', cls:'ok'},
       {ico:'🗓️', id:'br-fiscal-scad', val:'—', lbl:'Prossima scadenza', cls:'attenzione'},
     ];
     kpis.forEach(k => {
@@ -1852,6 +1881,15 @@ function collegaEventi() {
   document.getElementById('nav-audit')?.addEventListener('click', () => go('audit'));
   document.getElementById('nav-siti')?.addEventListener('click', () => go('siti'));
 
+  // Siti — pulsanti
+  document.getElementById('btn-ping-siti')?.addEventListener('click', verificaSiti);
+  document.getElementById('btn-check-studiolegale')?.addEventListener('click', () => pingSito('studiolegale'));
+  document.getElementById('btn-check-gestioni')?.addEventListener('click', () => pingSito('gestioni'));
+  document.getElementById('btn-open-studiolegale')?.addEventListener('click', () => window.open('https://studiolegalegrillo.netlify.app','_blank','noopener,noreferrer'));
+  document.getElementById('btn-open-gestioni')?.addEventListener('click', () => window.open('https://www.gestioni-immobiliari.eu','_blank','noopener,noreferrer'));
+  document.getElementById('btn-open-gestioni-wp')?.addEventListener('click', () => window.open('https://www.gestioni-immobiliari.eu/wp-admin/','_blank','noopener,noreferrer'));
+  document.getElementById('btn-open-search-console')?.addEventListener('click', () => window.open('https://search.google.com/search-console','_blank','noopener,noreferrer'));
+
   // Apertura dashboard agenti
   document.getElementById('open-main')?.addEventListener('click', () => apriDashboard('main'));
   document.getElementById('open-nl')?.addEventListener('click', () => apriDashboard('nl'));
@@ -1904,78 +1942,114 @@ function toast(msg) {
   setTimeout(() => t.classList.remove('show'), 2800);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// MONITOR SITI WEB
+// ═══════════════════════════════════════════════════════════════════════════
 
-// ═══════════════════════════════════════════════════════════════════════
-// SITI WEB — Monitor uptime
-// ═══════════════════════════════════════════════════════════════════════
-const _sitiStorico = { sl: [], gi: [] };
+const SITI_CONFIG = {
+  studiolegale: {
+    url: 'https://studiolegalegrillo.netlify.app',
+    nome: 'Studio Legale',
+    ssl: true,
+  },
+  gestioni: {
+    url: 'https://www.gestioni-immobiliari.eu',
+    nome: 'Gestioni Immobiliari',
+    ssl: true,
+  },
+};
 
-async function pingSito(id, url, nome) {
+// Storico uptime in sessione (array di bool ultimi 10 ping)
+const sitiUptime = { studiolegale: [], gestioni: [] };
+
+async function pingSito(id) {
+  const cfg = SITI_CONFIG[id];
+  if (!cfg) return;
+
   const t0 = Date.now();
-  const card   = document.getElementById('card-' + id);
-  const statoEl = document.getElementById('stato-' + id);
-  const msEl   = document.getElementById(id + '-ms');
-  const upEl   = document.getElementById(id + '-up');
-  const bar    = document.getElementById('bar-' + id);
+  const dot = document.getElementById('dot-' + id);
+  const statusEl = document.getElementById('status-' + id);
+  const pingEl = document.getElementById('ping-' + id);
+  const barEl = document.getElementById('bar-' + id);
 
-  if (statoEl) { statoEl.textContent = 'VERIFICA…'; statoEl.style.color = 'var(--amb)'; }
-  if (card)    card.className = 'sito-card checking';
+  // Stato "checking"
+  if (dot) dot.className = 'dot dwarn';
+  if (statusEl) statusEl.textContent = 'Verifica…';
+  if (statusEl) statusEl.style.color = 'var(--amb)';
 
-  let ok = false;
-  let ms = null;
+  let online = false;
+  let pingMs = null;
+
   try {
+    // Usa un fetch con no-cors — verifica solo la raggiungibilità
     const ctrl = new AbortController();
-    const tid  = setTimeout(() => ctrl.abort(), 7000);
-    await fetch(url, { method: 'HEAD', mode: 'no-cors', cache: 'no-store', signal: ctrl.signal });
-    clearTimeout(tid);
-    ok = true;
-    ms = Date.now() - t0;
-  } catch(e2) { ok = false; }
+    setTimeout(() => ctrl.abort(), 8000);
+    await fetch(cfg.url, { method: 'HEAD', mode: 'no-cors', signal: ctrl.signal });
+    online = true;
+    pingMs = Date.now() - t0;
+  } catch (e) {
+    online = false;
+    pingMs = null;
+  }
 
-  _sitiStorico[id].push(ok);
-  if (_sitiStorico[id].length > 20) _sitiStorico[id].shift();
-  const pct = _sitiStorico[id].length
-    ? Math.round(_sitiStorico[id].filter(Boolean).length / _sitiStorico[id].length * 100)
+  // Aggiorna storico uptime
+  sitiUptime[id].push(online);
+  if (sitiUptime[id].length > 20) sitiUptime[id].shift();
+
+  const upPct = sitiUptime[id].length
+    ? Math.round((sitiUptime[id].filter(Boolean).length / sitiUptime[id].length) * 100)
     : 0;
 
-  if (card)    card.className = 'sito-card ' + (ok ? 'online' : 'offline');
-  if (statoEl) { statoEl.textContent = ok ? 'ONLINE' : 'OFFLINE'; statoEl.style.color = ok ? 'var(--grn)' : 'var(--rose)'; }
-  if (msEl)    msEl.textContent = ms ? ms + 'ms' : '—';
-  if (upEl)    upEl.textContent = pct + '%';
-  if (bar)     bar.style.width  = pct + '%';
+  // Aggiorna UI
+  if (dot) dot.className = 'dot ' + (online ? 'don' : 'doff');
+  if (statusEl) {
+    statusEl.textContent = online ? 'ONLINE' : 'OFFLINE';
+    statusEl.style.color = online ? 'var(--grn)' : 'var(--rose)';
+  }
+  if (pingEl) pingEl.textContent = pingMs ? pingMs + 'ms' : '—';
+  if (barEl) barEl.style.width = upPct + '%';
+
+  // Aggiorna metriche box
+  const prefix = id === 'studiolegale' ? 'sl' : 'gi';
+  const uptimeEl = document.getElementById(prefix + '-uptime');
+  const pingBoxEl = document.getElementById(prefix + '-ping');
+  if (uptimeEl) uptimeEl.textContent = upPct + '%';
+  if (pingBoxEl) pingBoxEl.textContent = pingMs ? pingMs + 'ms' : '—';
 
   // Log
-  const logBox = document.getElementById('siti-log');
-  if (logBox) {
-    const row = document.createElement('div');
-    row.className = 'siti-log-row';
-    const now = new Date().toTimeString().slice(0,8);
-        const tNow2 = document.createElement('span');
-    tNow2.style.cssText = "font-family:'DM Mono',monospace;font-size:10px;color:var(--txt3)";
-    tNow2.textContent = now;
-    const tTag2 = document.createElement('span');
-    tTag2.className = 'log-tag t-mgr';
-    tTag2.textContent = nome.slice(0,8).toUpperCase();
-    const tMsg2 = document.createElement('span');
-    tMsg2.style.cssText = 'color:var(--txt2);font-size:11px';
-    tMsg2.textContent = ok ? 'Raggiungibile ' + ms + 'ms' : 'Non raggiungibile';
-    const tSt2 = document.createElement('span');
-    tSt2.className = ok ? 'log-ok' : 'log-err';
-    tSt2.textContent = ok ? 'UP' : 'DOWN';
-    row.appendChild(tNow2); row.appendChild(tTag2); row.appendChild(tMsg2); row.appendChild(tSt2);    logBox.insertBefore(row, logBox.firstChild);
-    while (logBox.children.length > 40) logBox.removeChild(logBox.lastChild);
-  }
-  const lastEl = document.getElementById('siti-last');
-  if (lastEl) lastEl.textContent = 'Aggiornato ' + new Date().toLocaleTimeString('it-IT');
-
-  addLog('mgr', nome + ': ' + (ok ? 'ONLINE ' + ms + 'ms' : 'OFFLINE'), ok ? 'ok' : 'err', '');
+  aggiungiSitiLog(cfg.nome, online, pingMs);
+  addLog('mgr', cfg.nome + ': ' + (online ? 'ONLINE ' + pingMs + 'ms' : 'OFFLINE'), online ? 'ok' : 'err', '');
+  return online;
 }
 
 async function verificaSiti() {
-  await Promise.all([
-    pingSito('sl', 'https://studiolegalegrillo.netlify.app', 'Studio Legale'),
-    pingSito('gi', 'https://www.gestioni-immobiliari.eu',    'Gestioni Imm.'),
-  ]);
+  addLog('mgr', 'Verifica siti web in corso…', 'pend', '⏳');
+  await Promise.all(Object.keys(SITI_CONFIG).map(id => pingSito(id)));
+  const lastCheck = document.getElementById('siti-last-check');
+  if (lastCheck) lastCheck.textContent = 'Aggiornato ' + new Date().toLocaleTimeString('it-IT');
+}
+
+function aggiungiSitiLog(nome, online, ping) {
+  const container = document.getElementById('siti-log');
+  if (!container) return;
+  const row = document.createElement('div');
+  row.className = 'log-row';
+  const t = document.createElement('span');
+  t.className = 'log-t';
+  t.textContent = new Date().toTimeString().substring(0, 8);
+  const tag = document.createElement('span');
+  tag.className = 'log-tag ' + (online ? 't-mgr' : 't-mkt');
+  tag.textContent = nome.substring(0, 8).toUpperCase();
+  const msg = document.createElement('span');
+  msg.style.cssText = 'color:var(--txt2);font-size:11px;overflow:hidden;white-space:nowrap;text-overflow:ellipsis';
+  msg.textContent = online ? 'Raggiungibile · ' + ping + 'ms' : 'Non raggiungibile — verifica connessione';
+  const st = document.createElement('span');
+  st.className = online ? 'log-ok' : 'log-err';
+  st.textContent = online ? '✓ UP' : '✗ DOWN';
+  row.appendChild(t); row.appendChild(tag); row.appendChild(msg); row.appendChild(st);
+  container.insertBefore(row, container.firstChild);
+  // Max 50 righe
+  while (container.children.length > 50) container.removeChild(container.lastChild);
 }
 
 async function init() {
@@ -2000,7 +2074,7 @@ async function init() {
   setInterval(()=>{ pingTutti(); generaBriefing(); renderSchedMini(); }, 60000);
   go('cr');
   if(window.innerWidth < 768) goMob('mob-home');
-  // Monitor siti — avvio dopo 2s + ogni 5 min
+  // Verifica siti all'avvio e ogni 5 minuti
   setTimeout(verificaSiti, 2000);
   setInterval(verificaSiti, 5 * 60 * 1000);
 }
