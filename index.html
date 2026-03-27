@@ -34,7 +34,7 @@
   ║  ✅ CSP script-src: rimosso nonce placeholder non funzionante   ║
   ║     su hosting statico — sostituito con 'unsafe-inline'         ║
   ║                                                                  ║
-  ║  PIN: SHA-256 di "021979"                                       ║
+  ║  PIN: "021979" (6 cifre) — SHA-256: b0ef553...                                       ║
   ║  Nuovo hash: aprire console → sha256("NUOVO_PIN")               ║
   ║  Aggiornare: CONFIG.PIN_HASH nella sezione CONFIG               ║
   ╚══════════════════════════════════════════════════════════════════╝
@@ -335,6 +335,8 @@ body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradi
       <div class="pin-dot" id="pd1"></div>
       <div class="pin-dot" id="pd2"></div>
       <div class="pin-dot" id="pd3"></div>
+      <div class="pin-dot" id="pd4"></div>
+      <div class="pin-dot" id="pd5"></div>
     </div>
     <div class="pin-grid" id="pin-grid"></div>
     <div class="login-err" id="login-err"></div>
@@ -716,11 +718,11 @@ function handlePin(val){
   if(Date.now()<stato.lockoutUntil){const r=Math.ceil((stato.lockoutUntil-Date.now())/1000);document.getElementById('login-err').textContent=`Bloccato per altri ${r}s`;return;}
   if(val==='C'){stato.pinBuffer=stato.pinBuffer.slice(0,-1);}
   else if(val==='OK'){verificaPin();return;}
-  else if(stato.pinBuffer.length<4){stato.pinBuffer+=val;}
-  if(stato.pinBuffer.length===4)verificaPin();
+  else if(stato.pinBuffer.length<6){stato.pinBuffer+=val;}
+  if(stato.pinBuffer.length===6)verificaPin();
   aggiornaDotsPin();
 }
-function aggiornaDotsPin(){for(let i=0;i<4;i++){const d=document.getElementById(`pd${i}`);if(d)d.className=`pin-dot${i<stato.pinBuffer.length?' filled':''}`;}}
+function aggiornaDotsPin(){for(let i=0;i<6;i++){const d=document.getElementById(`pd${i}`);if(d)d.className=`pin-dot${i<stato.pinBuffer.length?' filled':''}`;}}
 async function verificaPin(){
   const input=stato.pinBuffer;stato.pinBuffer='';aggiornaDotsPin();
   const hash=await sha256(input);
